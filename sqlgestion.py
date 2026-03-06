@@ -149,6 +149,20 @@ def delete_item(id_item):
     conn.commit()
     conn.close()
     return True
+def delete_item_user(id_user,id_item):
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA foreign_keys = ON")
+    cursor.execute("SELECT 1 FROM items_usuarios_tb WHERE id_item = ? AND id_user = ?",(id_item,id_user))
+    existe = cursor.fetchone()
+    if not existe:
+        print("[ERROR DB] No existe el item asociado con el usuario")
+        return False
+    cursor.execute("DELETE FROM items_usuarios_tb WHERE id_item = ? AND id_user = ?",(id_item,id_user))
+    conn.commit()
+    conn.close()
+
+    
 
 def update_perfil(id_user,**datos):
     columnas_validas = {
@@ -193,7 +207,7 @@ def update_perfil(id_user,**datos):
     finally:
         conn.close()
 def update_item(id_item,**datos):
-    columnas_validas = {"nombre","precio","imagen"}
+    columnas_validas = {"nombre","precio","imagen","descripcion","mensaje"}
     if not datos:
         print("[ERROR BD] No se enviaron datos para actualizar")
         return False
@@ -259,7 +273,35 @@ def update_saldo(id_user,saldo=-1):
         print(f"[ERROR BD] {e}")
         conn.close()
         return False
-
+def update_cantidad(user_id,item_id,cantidad=-1):
+    if cantidad == -1:
+        print("[ERROR BD] No se proporciono una cantidad valida")
+        return False
+    
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA foreign_keys = ON;")
+    
+    try:
+        instruccion = f"""
+            UPDATE items_usuarios_tb
+            SET cantidad = ?
+            WHERE id_user = ? AND id_item = ?
+        """
+        cursor.execute(instruccion,(cantidad,user_id,item_id))
+        if cursor.rowcount == 0:
+            print("[ERROR BD] No existe una relación con ese id_user e id_item")
+            conn.close()
+            return False
+        
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"[ERROR BD] {e}")
+        conn.close()
+        return False
+    
 def get_campo_usuario(id_user,columna):
     columnas_validas = {
         "nombre","username","rol",
@@ -269,7 +311,7 @@ def get_campo_usuario(id_user,columna):
     
     if columna not in columnas_validas:
         print(f"[ERROR DB] Tipo de columna no reconocida: {columna}")
-        return False
+        return None
     
     tabla = "perfiles_tb"
     if columna == "saldo":
@@ -290,11 +332,11 @@ def get_campo_usuario(id_user,columna):
 
     return resultado[0]
 def get_campo_item(id_item,columna):
-    columnas_validas = {"nombre","precio","imagen"}
+    columnas_validas = {"id_item","nombre","precio","imagen","descripcion","mensaje"}
 
     if columna not in columnas_validas:
         print(f"[ERROR BD] Tipo de columna no reconocida: {columna}")
-        return False
+        return None
 
     conn = connect()
     cursor = conn.cursor()
@@ -309,6 +351,21 @@ def get_campo_item(id_item,columna):
     conn.commit()
     conn.close()
     return resultado[0]
+def get_cantidad_item_inventario(id_user,id_item):
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA foreign_keys = ON;")
+    instruccion = f"SELECT cantidad from items_usuarios_tb WHERE id_item = ? AND id_user = ?"
+    cursor.execute(instruccion,(id_item,id_user))
+    resultado = cursor.fetchone()
+
+    if resultado is None:
+        return 0
+    
+    conn.commit()
+    conn.close()
+    return resultado[0]
+
 def get_items(id_user):
     conn = connect()
     cursor = conn.cursor()
@@ -361,17 +418,42 @@ def get_id_user(username):
 
         return None
     except Exception as e:
-        print(f"[ERROR BD] Error get_id_user:{e}")
+        print(f"[ERROR BD] Error get_id_item:{e}")
         conn.close()
         return False
+def get_id_item(nombre):
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA foreign_keys = ON")
+    nombre = to_plain_text(nombre,True).capitalize()
+    print(nombre)
+    try:
+        cursor.execute("""
+            SELECT id_item
+            FROM items_tb
+            WHERE nombre = ?
+        """,(nombre,))
 
+        resultado = cursor.fetchone()
+
+        conn.close()
+        if resultado:
+            return resultado[0]
+
+        return None
+    except Exception as e:
+        print(f"[ERROR BD] Error get_id_item:{e}")
+        conn.close()
+        return False
 def dar_puntos(id_user,cantidad):
     cantidad_actual = get_campo_usuario(id_user,"saldo")
+    if cantidad_actual == None or cantidad_actual == False:
+        cantidad_actual = 0
     cantidad_actualizada = cantidad_actual + cantidad
     return update_saldo(id_user,cantidad_actualizada)
 def quitar_puntos(id_user,cantidad):
     return dar_puntos(id_user,-cantidad)
-
+    print
 def normalizar_nombre(first_name:str,last_name:str = "") -> str:
     nombre_completo = f"{to_plain_text(first_name) or ''} {to_plain_text(last_name) or ''}".strip()
     nombre_completo = re.sub(r'[^A-Za-z0-9ÁÉÍÓÚáéíóúÑñÜü ]+', '', nombre_completo)
@@ -446,7 +528,14 @@ def to_plain_text(s:str,keep_space:bool = False) -> str:
             # Eliminar todo excepto ASCII alfanumérico
             text = re.sub(r"[^0-9A-Za-z]+", "", text)
 
-        return text.lower()
+        return reemplazar_acentos(text.lower())
     except TypeError:
         return ""
-    
+def reemplazar_acentos(cadena):
+    reemplazos = (
+        ("á", "a"), ("é", "e"), ("í", "i"), ("ó", "o"), ("ú", "u"),
+        ("Á", "A"), ("É", "E"), ("Í", "I"), ("Ó", "O"), ("Ú", "U")
+    )
+    for acentuada, normalizada in reemplazos:
+        cadena = cadena.replace(acentuada, normalizada)
+    return cadena  

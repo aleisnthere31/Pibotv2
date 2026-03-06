@@ -5,23 +5,6 @@ BOT_TOKEN = "8254671233:AAEJaciszQQ3Ub_ccprFb6HbH0yb101RY0s" #os.getenv("BOT_TOK
 
 COMUNIDADES = [
     {
-        "id_comunidad":-1003397946543, #Ara
-        "temas":{
-            "theme_presentaciones": 7,
-            "theme_anuncios": 396,
-            "theme_questions": 439,
-            "theme_escuela": 3,
-            "theme_juegosYcasino":362, #362
-            "theme_cgl":8,
-            "theme_NSFW":5,
-            "theme_Exhibicionismo":9,
-            "theme_busquedas":1606,
-            "theme_zona_de_descanso":2,
-            "theme_multimedia":4,
-            "theme_rincon": 6
-        }
-    },
-    {
         "id_comunidad":-1003290179217, #Kiusama
         "temas":{
             "theme_anuncios": 526,
@@ -33,7 +16,8 @@ COMUNIDADES = [
             "theme_Exhibicionismo":437,
             "theme_busquedas":695,
             "theme_libreria":462,
-            "theme_multimedia":688
+            "theme_multimedia":688,
+            "theme_rincon": 77167
         }
     },
     {
@@ -51,15 +35,48 @@ COMUNIDADES = [
             "theme_test":43,
             "theme_reglas":8,
             "theme_escuela":6,
-            "theme_presentaciones":2
+            "theme_presentaciones":2,
+            "theme_rincon":36205
         }
     }
 ]
-
+ADMINS = [
+    {
+        "id_comunidad":-1003397946543, #Ara
+        "admins":{
+            5661536115,
+            1128700552,
+            2032501673
+        }
+    },
+    {
+        "id_comunidad":-1003290179217, #Kiusama
+        "admins":{
+            1128700552,
+            7745029153,
+            5708369612,
+            8418367872
+        }
+    },
+    {
+        "id_comunidad":-1002983018006, #Rub
+        "admins":{
+            1128700552,
+            7029654837,
+            7906640874,
+            2032501673,
+            7589729679
+        }
+    }
+]
 DOMS = {
     1370162159: [5661536115],
-    1174798556: [7064982957,7819911906,1128700552]
+    1174798556: [7064982957,7819911906,1128700552,1754172595],
+    777745711: [7252166050],
+    8019495591: [6843544299],
+    1128700552:[1750172112]
 }
+
 def obtener_temas_por_comunidad(community_id: int):
     for comunidad in COMUNIDADES:
         if comunidad["id_comunidad"] == community_id:

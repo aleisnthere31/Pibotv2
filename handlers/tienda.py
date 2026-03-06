@@ -1,18 +1,19 @@
 import os
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
+from telegram import InputMediaPhoto, Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
-from sqlgestion import get_campo_usuario
+from sqlgestion import get_campo_usuario, get_campo_item, quitar_puntos,insert_user_item,get_cantidad_item_inventario,update_cantidad
+from telegram.error import TelegramError
 
-async def tienda (update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ==============================
+#   TIENDA (Pantalla inicial)
+# ==============================
+async def tienda(update: Update, context: ContextTypes.DEFAULT_TYPE, from_menu=False):
     user_id = update.effective_user.id
     chat = update.effective_chat
-
+    # --- SI NO ES PRIVADO ---
     if chat.type != "private":
         deep_link = f"https://t.me/PiBotBotBotBotBot?start=menu"
-
-        keyboard = [
-            [InlineKeyboardButton("✨ Abrir menú principal", url=deep_link)]
-        ]
+        keyboard = [[InlineKeyboardButton("✨ Abrir menú principal", url=deep_link)]]
 
         await update.message.reply_text(
             "🛍️ La tienda solo está disponible en el chat privado.\n"
@@ -20,51 +21,231 @@ async def tienda (update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
         return
-    
-    if get_campo_usuario(user_id,"id_user") is None:
+
+    # --- REGISTRO ---
+    if get_campo_usuario(user_id, "id_user") is None:
         await update.message.reply_text(
             "⚠️ No estás registrado.\nUsa /ver en el chat general de la comunidad para registrarte primero."
         )
         return
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    RUTA_CATALOGO = os.path.join(BASE_DIR, "img_itemS", "catalogo.jpg")
 
+    # --- CARGAR IMAGEN DE CATÁLOGO ---
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    RUTA_CATALOGO = os.path.join(BASE_DIR, "img_items", "catalogo.png")
+
+    # --- SI VIENE DESDE UN BOTÓN ---
+    if from_menu:
+        sent = await update.callback_query.message.edit_media(
+            media=InputMediaPhoto(open(RUTA_CATALOGO, "rb"))
+        )
+        await update.callback_query.message.edit_caption(
+            caption="🛍️ **Catálogo de productos**",
+            parse_mode="Markdown",
+            reply_markup=botonera_catalogo()
+        )
+        return
+
+    # --- SI VIENE DESDE /TIENDA ---
     await update.message.reply_photo(
-        photo=RUTA_CATALOGO,
-        caption="🛍️ **Catálogo de Productos**\nSelecciona el número del producto que deseas ver.",
-        parse_mode="Markdown"
+        photo=open(RUTA_CATALOGO, "rb"),
+        caption="🛍️ **Catálogo de productos**",
+        parse_mode="Markdown",
+        reply_markup=botonera_catalogo()
     )
-    keyboard = [
-        [
-            InlineKeyboardButton("1️⃣", callback_data="producto_1"),
-            InlineKeyboardButton("2️⃣", callback_data="producto_2"),
-            InlineKeyboardButton("3️⃣", callback_data="producto_3"),
-        ],
-        [
-            InlineKeyboardButton("4️⃣", callback_data="producto_4"),
-            InlineKeyboardButton("5️⃣", callback_data="producto_5"),
-            InlineKeyboardButton("6️⃣", callback_data="producto_6"),
-        ] 
-    ]
-    await update.message.reply_text(
-        "👇 Selecciona un producto:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+# ==============================
+#   CALLBACKS
+# ==============================
+def main_menu_markup():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📜 Ver comandos", callback_data="ver_comandos")],
+        [InlineKeyboardButton("🛍️ Abrir tienda", callback_data="abrir_tienda")],
+        [InlineKeyboardButton("📦 Ver inventario", callback_data="ver_inventario")],
+        [InlineKeyboardButton("👤 Perfil", callback_data="perfil")]
+    ])
+
 async def tienda_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
-
+    await query.answer()  # importante responder el callback
     data = query.data
+    # ------- VOLVER AL MENÚ PRINCIPAL (robusto) -------
+    if data == "volver_menu":
+        print("User ha regresado al menu principal")
+        # Intentar editar el mensaje actual a texto del menú
+        try:
+            await query.edit_message_text(
+                "✨ *Menú principal*\nSelecciona una opción:",
+                parse_mode="Markdown",
+                reply_markup=main_menu_markup()
+            )
+            return
+        except TelegramError:
+            # Si no es posible (por ejemplo, convertir mensaje-media a texto),
+            # enviamos el menú como un nuevo mensaje y borramos el antiguo.
+            try:
+                # enviar nuevo mensaje con el menú
+                await context.bot.send_message(
+                    chat_id=query.from_user.id,
+                    text="✨ *Menú principal*\nSelecciona una opción:",
+                    parse_mode="Markdown",
+                    reply_markup=main_menu_markup()
+                )
+            except Exception as e:
+                # opcionalmente loggear el error
+                print("Error enviando menu fallback:", e)
 
-    # Aquí puedes conectar con tu BD / precios / stock
-    productos = {
-        "producto_1": "Producto 1 — 💲50 monedas",
-        "producto_2": "Producto 2 — 💲80 monedas",
-        "producto_3": "Producto 3 — 💲120 monedas",
-        "producto_4": "Producto 4 — 💲200 monedas",
-        "producto_5": "Producto 5 — 💲450 monedas",
-        "producto_6": "Producto 6 — 💲1000 monedas",
-    }
+            # intentar borrar el mensaje viejo (silencioso si falla)
+            try:
+                await query.message.delete()
+            except Exception:
+                pass
+            return
 
-    if data in productos:
-        await query.message.reply_text(f"🛒 {productos[data]}")
+    # ------- MOSTRAR ITEM -------
+    if data.startswith("producto_"):
+        id_item = int(data.replace("producto_", ""))
+        descripcion = get_campo_item(id_item, "descripcion")
+        await mostrar_item(id_item, descripcion, update, context)
+        return
+
+    # ------- VOLVER AL CATÁLOGO -------
+    if data == "volver_catalogo":
+        await volver_catalogo(update, context)
+        return
+
+    # ------- COMPRAR ITEM -------
+    if data.startswith("comprar_"):
+        id_item = int(data.replace("comprar_", ""))
+        await comprar_item(id_item, update, context)
+        return
+
+# ==============================
+#       VOLVER AL CATÁLOGO
+# ==============================
+async def volver_catalogo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    RUTA_CATALOGO = os.path.join(BASE_DIR, "img_items", "catalogo.png")
+
+    # Cambiar imagen
+    with open(RUTA_CATALOGO, "rb") as img:
+        await query.edit_message_media(
+            media=InputMediaPhoto(img)
+        )
+
+    # Cambiar caption
+    await query.edit_message_caption(
+        caption="🛍️ **Catálogo de productos**",
+        parse_mode="Markdown",
+        reply_markup=botonera_catalogo()
+    )
+
+# ==============================
+#     COMPRAR ITEM
+# ==============================
+async def comprar_item(id_item, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.from_user.id
+
+    item_nombre = get_campo_item(id_item, "nombre")
+    item_precio = int(get_campo_item(id_item, "precio"))
+
+    try:
+        saldo_usuario = int(get_campo_usuario(user_id, "saldo"))
+    except:
+        saldo_usuario = 0
+
+    # --- SIN SALDO ---
+    if saldo_usuario < item_precio:
+        await query.edit_message_caption(
+            caption=(
+                f"❌ *No tienes suficientes PiPesos*\n\n"
+                f"Item: *{item_nombre}*\n"
+                f"Precio: `{item_precio}`\n"
+                f"Tu saldo actual: `{saldo_usuario}`"
+            ),
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("⬅️ Volver al catálogo", callback_data="volver_catalogo")]
+            ])
+        )
+        return
+
+    # --- COMPRA EXITOSA ---
+    await query.edit_message_caption(
+        caption=(
+            f"🎉 *¡Compra exitosa!*\n\n"
+            f"Has comprado: *{item_nombre}*\n"
+            f"Precio: `{item_precio}`\n\n"
+            f"💼 El item ha sido añadido a tu inventario."
+        ),
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("⬅️ Volver al catálogo", callback_data="volver_catalogo")]
+        ])
+    )
+    quitar_puntos(user_id,item_precio)
+    cantidad_actual = get_cantidad_item_inventario(user_id,id_item)
+    print(f"La cantidad del item {id_item} para el usuario {user_id} es de: {cantidad_actual}")
+    if cantidad_actual == 0:
+        insert_user_item(user_id,id_item,cantidad_actual+1)
+    else:
+        update_cantidad(user_id,id_item,cantidad_actual+1)
+# ==============================
+#    MOSTRAR ITEM ESPECÍFICO
+# ==============================
+async def mostrar_item(id_item, descripcion, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+
+    item_nombre = get_campo_item(id_item, "nombre")
+    item_precio = get_campo_item(id_item, "precio")
+    item_imagen = get_campo_item(id_item, "imagen")
+
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    ruta_absoluta_imagen = os.path.join(BASE_DIR, item_imagen)
+
+
+    texto_item = (
+        f"📦 *{item_nombre}*\n"
+        f"💬 {descripcion}\n"
+        f"💲 Precio: {item_precio} COP"
+    )
+
+    botonera = InlineKeyboardMarkup([
+        [InlineKeyboardButton("⬅️ Volver al catálogo", callback_data="volver_catalogo")],
+        [InlineKeyboardButton("🛒 Comprar", callback_data=f"comprar_{id_item}")]
+    ])
+
+    # Imagen
+    with open(ruta_absoluta_imagen, "rb") as img:
+        await query.edit_message_media(
+            media=InputMediaPhoto(img)
+        )
+
+    # Texto + Botones
+    await query.edit_message_caption(
+        caption=texto_item,
+        parse_mode="Markdown",
+        reply_markup=botonera
+    )
+
+
+# ==============================
+#   BOTONERA CATÁLOGO
+# ==============================
+def botonera_catalogo():
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("1️⃣ Collar", callback_data="producto_1"),
+            InlineKeyboardButton("2️⃣ Látigo", callback_data="producto_2"),
+            InlineKeyboardButton("3️⃣ Fusta", callback_data="producto_3"),
+        ],
+        [
+            InlineKeyboardButton("4️⃣ Galleta", callback_data="producto_4"),
+            InlineKeyboardButton("5️⃣ Bola mordaza", callback_data="producto_5"),
+            InlineKeyboardButton("6️⃣ ???", callback_data="producto_6"),
+        ],
+        [
+            InlineKeyboardButton("⬅️ Volver al menú", callback_data="volver_menu")
+        ]
+    ])

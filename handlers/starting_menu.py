@@ -1,17 +1,24 @@
 # starting_menu.py
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
-from sqlgestion import insert_user,normalizar_nombre,get_campo_usuario
+from sqlgestion import get_campo_usuario
 from handlers.tienda import tienda
+from handlers.inventario import inventario
 
 # =========  COMANDO /START  ========= #
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
 
     if get_campo_usuario(user.id,"id_user") is None:
-        context.bot.send_message("🎉 Veo que eres nuevo, no te tengo en mi sistema, si deseas ingresar a la tienda o a tu perfil, primero coloca el comando /ver en la comunidad ;D (No olvides leer las reglas)")
+        await context.bot.send_message(
+            chat_id=user.id,
+            text=(
+                "🎉 Veo que eres nuevo, no te tengo en mi sistema.\n\n"
+                "Si deseas ingresar a la tienda o ver tu perfil,\n"
+                "primero usa el comando /ver en la comunidad. 😄"
+            )
+        )
         return
-    # Guardar usuario en la BD
 
     # Solo mostrar menú si está en privado
     if update.message.chat.type != "private":
@@ -41,7 +48,7 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
 
     if data == "ver_comandos":
-        await query.message.reply_text(
+        await query.edit_message_text(
             "📜 *Comandos disponibles:*\n"
             "/tienda \n"
             "/perfil\n"
@@ -55,18 +62,17 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif data == "abrir_tienda":
-        fake_update = Update(
-            update.update_id,
-            message=query.message  # usar el mismo mensaje del callback
-        )
-        await tienda(fake_update, context)
+        await tienda(update, context,from_menu=True)
+        return
 
     elif data == "ver_inventario":
-        await query.message.reply_text("📦 Tu inventario está vacío (por ahora).")
+        await inventario(update,context)
+        return
 
     elif data == "perfil":
-        await query.message.reply_text(
+        await query.edit_message_text(
             f"👤 *Perfil de {user.first_name}*\n"
             f"ID: `{user.id}`",
             parse_mode="Markdown"
         )
+        return

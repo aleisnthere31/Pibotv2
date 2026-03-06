@@ -6,7 +6,6 @@ from telegram.ext import ContextTypes
 from config import obtener_temas_por_comunidad
 from sqlgestion import normalizar_nombre,get_campo_usuario,insert_user,dar_puntos
 
-RUTA_USUARIOS = "pipesos.json"  # si usas otro nombre, ajústalo
 contador_imagenes_multimedia = {}
 contador_imagenes_nsfw = {}
 contador_imagenes_presentacion = []
@@ -17,7 +16,6 @@ async def manejar_imagenes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_id = update.effective_chat.id
     CHAT_IDS = obtener_temas_por_comunidad(group_id)
     thread_id = update.message.message_thread_id
-    print(f"El thread_id es: {thread_id}")
 
     if thread_id == CHAT_IDS["theme_multimedia"]:
         await detectar_imagenes_multimedia(update, context)
@@ -104,7 +102,6 @@ async def detectar_imagenes_multimedia(update: Update, context: ContextTypes.DEF
 
     # Incrementar contador de imágenes consecutivas
     contador_imagenes_multimedia[user_id] += 1
-    print(f"🖼️ {username or nombre} ha enviado {contador_imagenes_multimedia[user_id]} imágenes seguidas en multimedia.")
 
     # Recompensa cada 3 imágenes
     if contador_imagenes_multimedia[user_id] >= 3:
@@ -156,7 +153,6 @@ async def detectar_imagenes_nsfw(update: Update, context: ContextTypes.DEFAULT_T
 
     # Incrementar contador de imágenes consecutivas
     contador_imagenes_nsfw[user_id] += 1
-    print(f"🔞 {username or nombre} ha enviado {contador_imagenes_nsfw[user_id]} imágenes seguidas en NSFW.")
 
     # Recompensa cada 5 imágenes
     if contador_imagenes_nsfw[user_id] >= 5:
@@ -215,5 +211,3 @@ async def detectar_exhibicion(update: Update, context: ContextTypes.DEFAULT_TYPE
         text=f"✨ @{username or nombre} ha sido recompensado con 10 PiPesos por su publicación en Exhibicionismo 💫",
         message_thread_id=thread_id
     )
-
-    print(f"💰 {username or nombre} recibió 10 PiPesos por actividad en Exhibición (ID: {user_id})")

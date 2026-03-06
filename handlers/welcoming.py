@@ -96,7 +96,6 @@ async def verificar_presentacion(context: ContextTypes.DEFAULT_TYPE,group_id: in
                 chat_id=group_id,
                 text=f"@Admin ⚠️ El usuario @{username} no se presentó en los 30 minutos posteriores a su ingreso."
             )
-            print(f"El usuario {username} no se ha presentado, se envía notificación")
         except Exception as e:
             print(f"Error al notificar sobre @{username}: {e}")
         del usuarios_en_verificacion[group_id][user_id]
@@ -120,5 +119,4 @@ async def mensaje_de_presentaciones(update: Update, context: ContextTypes.DEFAUL
     if thread_id == CHAT_IDS.get("theme_presentaciones"):
         if user_id in usuarios_en_verificacion:
             del usuarios_en_verificacion[user_id]
-            print(f"✅ {update.effective_user.username} se presentó correctamente.")
         

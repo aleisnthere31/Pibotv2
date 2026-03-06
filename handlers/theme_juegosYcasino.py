@@ -172,7 +172,15 @@ async def detectar_dado(update: Update, context: ContextTypes.DEFAULT_TYPE):
         jugador = "rival"
     else:
         return  # no es parte de la apuesta
-
+    
+    if bet["dados"][jugador] is not None:
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=f"Ya haz lanzado el dado, no puedes volver a lanzar",
+            message_thread_id=thread_id
+        )
+        return
+    
     valor = msg.dice.value
     bet["dados"][jugador] = valor
 
@@ -267,7 +275,6 @@ async def jugar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message_thread_id=thread_id
     )
     valor = dice_message.dice.value
-    print(f"El valor es de: {valor}")
     if valor == 6 or valor == 1:
         dar_puntos(user_id, 50)
         resultado = f"🎉 ¡Ganaste! sacaste {valor} 🎲\n💰 Se te acreditaron 50 PiPesos."
@@ -285,7 +292,14 @@ async def jugar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def robar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Comando /robar @Usuario - Solo válido con @Usuario, no con reply."""
     CHAT_IDS = obtener_temas_por_comunidad(update.effective_chat.id)
-    thread_id = update.message.message_thread_id
+    
+    try:
+        thread_id = update.message.message_thread_id
+    except ArithmeticError or TypeError as e:
+        hora = datetime.now().time()
+        print(f"No ha sido posible identificar el tema, {e}\nError a las: {hora.hour}:{hora.minute}")
+        del hora
+        return
     
     robber_user = update.effective_user
     robbed_user = None
