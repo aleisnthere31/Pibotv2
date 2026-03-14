@@ -89,6 +89,32 @@ def create_tables() -> None:
         );
     """)
     
+    # Combat/Battle table: Active battles between users
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS combates_tb (
+            id_combate INTEGER PRIMARY KEY AUTOINCREMENT,
+            id_atacante INTEGER NOT NULL,
+            id_defensor INTEGER NOT NULL,
+            username_atacante TEXT NOT NULL,
+            username_defensor TEXT NOT NULL,
+            apuesta INTEGER NOT NULL DEFAULT 0,
+            hp_atacante INTEGER NOT NULL DEFAULT 20,
+            hp_defensor INTEGER NOT NULL DEFAULT 20,
+            turno INTEGER NOT NULL DEFAULT 1,
+            es_turno_atacante INTEGER NOT NULL DEFAULT 1,
+            estado TEXT NOT NULL DEFAULT 'activo',
+            ganador INTEGER,
+            fecha_inicio DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (id_atacante) REFERENCES usuarios_tb(id_user),
+            FOREIGN KEY (id_defensor) REFERENCES usuarios_tb(id_user),
+            FOREIGN KEY (ganador) REFERENCES usuarios_tb(id_user)
+        );
+    """)
+    
+    # Create indexes for faster combat lookups
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_combate_atacante ON combates_tb(id_atacante);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_combate_defensor ON combates_tb(id_defensor);")
+    
     conn.commit()
     conn.close()
 
