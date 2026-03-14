@@ -9,6 +9,7 @@ Implements D&D-style battle mechanics with:
 """
 
 import random
+from datetime import datetime, timedelta
 from telegram import Update
 from telegram.ext import ContextTypes, CommandHandler
 
@@ -95,7 +96,8 @@ def get_combate_activo(id_user: int) -> dict:
             'turno': resultado[8],
             'es_turno_atacante': resultado[9],
             'estado': resultado[10],
-            'ganador': resultado[11]
+            'ganador': resultado[11],
+            'fecha_inicio': resultado[12]
         }
     except Exception as e:
         print(f"[ERROR DB] Error getting active combat: {e}")
@@ -208,7 +210,8 @@ def get_combate_by_id(id_combate: int) -> dict:
             'turno': resultado[8],
             'es_turno_atacante': resultado[9],
             'estado': resultado[10],
-            'ganador': resultado[11]
+            'ganador': resultado[11],
+            'fecha_inicio': resultado[12]
         }
     except Exception as e:
         print(f"[ERROR DB] Error getting combat by ID: {e}")
@@ -342,6 +345,28 @@ async def ataque(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "❌ No tienes un combate activo\n"
             "Usa /lucha @usuario cantidad para iniciar uno"
+        )
+        return
+    
+    # Check if combat has expired (30 seconds without attacks)
+    fecha_inicio = datetime.fromisoformat(combate['fecha_inicio'])
+    tiempo_transcurrido = datetime.now() - fecha_inicio
+    
+    if tiempo_transcurrido > timedelta(seconds=30):
+        # Combat expired - loser is the one whose turn it was
+        id_ganador = combate['id_defensor'] if combate['es_turno_atacante'] else combate['id_atacante']
+        terminar_combate(combate['id_combate'], id_ganador)
+        
+        nombre_ganador = combate['username_defensor'] if combate['es_turno_atacante'] else combate['username_atacante']
+        nombre_perdedor = combate['username_atacante'] if combate['es_turno_atacante'] else combate['username_defensor']
+        
+        await context.bot.send_message(
+            chat_id,
+            f"⏱️ **¡COMBATE EXPIRADO!**\n\n"
+            f"❌ {nombre_perdedor} no atacó en 30 segundos\n"
+            f"🏆 {nombre_ganador} gana por inactividad\n"
+            f"💰 Ganador recibió {combate['apuesta'] * 2} PiPesos",
+            parse_mode='Markdown'
         )
         return
     

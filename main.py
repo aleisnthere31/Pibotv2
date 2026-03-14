@@ -26,7 +26,7 @@ from telegram.ext import (
 
 # Local imports
 from src.config import BOT_TOKEN, DOMS, obtener_temas_por_comunidad, PUNISHMENT_FILE
-from src.database.database import create_database, create_tables
+from src.database.database import create_database, create_tables, restart_all_combats
 
 # Handler imports - General commands
 from handlers.general import dar, ver, regalar, numero_azar, quitar
@@ -332,6 +332,9 @@ def main() -> None:
     
     print("[INIT] Creating tables...")
     create_tables()
+    
+    print("[INIT] Restarting active combats...")
+    restart_all_combats()
     
     app = Application.builder().token(BOT_TOKEN).build()
 

@@ -853,3 +853,29 @@ def reemplazar_acentos(cadena: str) -> str:
         cadena = cadena.replace(acentuada, normalizada)
     
     return cadena
+
+
+# ==================== COMBAT OPERATIONS ====================
+
+def restart_all_combats() -> None:
+    """
+    Reset all active combats to 'cancelado' status.
+    Called on bot startup to clean up any incomplete combats.
+    """
+    try:
+        conn = _get_connection()
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA foreign_keys = ON;")
+        
+        cursor.execute(
+            "UPDATE combates_tb SET estado = 'cancelado' WHERE estado = 'activo'"
+        )
+        
+        affected_rows = cursor.rowcount
+        if affected_rows > 0:
+            print(f"[INIT] Cancelled {affected_rows} active combats on startup")
+        
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[ERROR DB] Error restarting combats: {e}")
