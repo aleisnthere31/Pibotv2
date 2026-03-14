@@ -26,6 +26,7 @@ from telegram.ext import (
 
 # Local imports
 from src.config import BOT_TOKEN, DOMS, obtener_temas_por_comunidad, PUNISHMENT_FILE
+from src.database.database import create_database, create_tables
 
 # Handler imports - General commands
 from handlers.general import dar, ver, regalar, numero_azar, quitar
@@ -325,6 +326,13 @@ def main() -> None:
     - Message filters for images and special messages
     - Punishment filter to enforce confinement
     """
+    # Initialize database
+    print("[INIT] Creating database if it doesn't exist...")
+    create_database()
+    
+    print("[INIT] Creating tables...")
+    create_tables()
+    
     app = Application.builder().token(BOT_TOKEN).build()
 
     # Group -1: Community blocking filter (runs first, can stop others)
