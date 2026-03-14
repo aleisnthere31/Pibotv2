@@ -294,9 +294,10 @@ async def lucha(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     # Create combat
+    sender_username = sender.username or f"Usuario{sender.id}"
     combat_id = crear_combate(
         sender.id, opponent_id,
-        sender.username or f"Usuario{sender.id}",
+        sender_username,
         opponent_username,
         apuesta
     )
@@ -312,10 +313,10 @@ async def lucha(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Send challenge message
     mensaje = (
         f"⚔️ **¡COMBATE INICIADO!**\n\n"
-        f"🥊 {sender.username} ⚔️ @{opponent_username}\n"
+        f"🥊 {sender_username} ⚔️ @{opponent_username}\n"
         f"❤️ HP: 20 vs 20\n"
         f"💰 Apuesta: {apuesta} PiPesos cada uno\n\n"
-        f"Turno actual: {sender.username}\n"
+        f"Turno actual: {sender_username}\n"
         f"Usa /ataque para atacar al oponente"
     )
     
@@ -339,7 +340,7 @@ async def ataque(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not combate:
         await update.message.reply_text(
-            "❌ No tienes un combat activo\n"
+            "❌ No tienes un combate activo\n"
             "Usa /lucha @usuario cantidad para iniciar uno"
         )
         return
@@ -398,7 +399,6 @@ async def ataque(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     else:
         # Combat continues
-        turno_actual = "Turno"
         siguiente_atacante = defensor_nombre if combate['es_turno_atacante'] == 1 else atacante_nombre
         
         mensaje = (
