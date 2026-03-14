@@ -258,10 +258,6 @@ async def regalar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if cantidad <= 0:
         await update.message.reply_text("⚠️ La cantidad debe ser mayor a 0.")
         return
-
-    if cantidad > 200:
-        await update.message.reply_text("⚠️ No hay necesidad de regalarse tanto, limitar a 200.")
-        return
     
     receptor = await get_receptor(update,context,2)
 
