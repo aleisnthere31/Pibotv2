@@ -230,7 +230,6 @@ async def lucha(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context: Command context
     """
     sender = update.effective_user
-    chat_id = update.effective_chat.id
     
     # Check if sender already in combat
     combate_activo = get_combate_activo(sender.id)
@@ -323,7 +322,7 @@ async def lucha(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Usa /ataque para atacar al oponente"
     )
     
-    await context.bot.send_message(chat_id, mensaje, parse_mode='Markdown')
+    await update.message.reply_text(mensaje, parse_mode='Markdown')
 
 
 async def ataque(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -336,7 +335,6 @@ async def ataque(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context: Command context
     """
     sender = update.effective_user
-    chat_id = update.effective_chat.id
     
     # Get active combat
     combate = get_combate_activo(sender.id)
@@ -360,8 +358,7 @@ async def ataque(update: Update, context: ContextTypes.DEFAULT_TYPE):
         nombre_ganador = combate['username_defensor'] if combate['es_turno_atacante'] else combate['username_atacante']
         nombre_perdedor = combate['username_atacante'] if combate['es_turno_atacante'] else combate['username_defensor']
         
-        await context.bot.send_message(
-            chat_id,
+        await update.message.reply_text(
             f"⏱️ **¡COMBATE EXPIRADO!**\n\n"
             f"❌ {nombre_perdedor} no atacó en 30 segundos\n"
             f"🏆 {nombre_ganador} gana por inactividad\n"
@@ -434,4 +431,4 @@ async def ataque(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📊 {siguiente_atacante}, es tu turno. Usa /ataque"
         )
     
-    await context.bot.send_message(chat_id, mensaje, parse_mode='Markdown')
+    await update.message.reply_text(mensaje, parse_mode='Markdown')
