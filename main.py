@@ -33,7 +33,7 @@ from handlers.general import dar, ver, regalar, numero_azar, quitar
 from handlers.starting_menu import start, menu_callback
 from handlers.tienda import tienda, tienda_callback
 from handlers.inventario import inventario, inventario_callback, usar
-from handlers.battles import lucha, ataque
+from handlers.battles import lucha, ataque, aceptar_lucha, dados
 
 # Handler imports - Games and rewards
 from handlers.theme_juegosYcasino import (
@@ -366,9 +366,11 @@ def main() -> None:
     app.add_handler(CommandHandler("id", get_theme_id), group=2)
     app.add_handler(CommandHandler("saludar", saludar), group=2)
 
-    # Group 2.5: Battle/Combat system (D&D style)
+    # Group 2.5: Battle/Combat system (refactored)
     app.add_handler(CommandHandler("lucha", lucha), group=2)
-    app.add_handler(CommandHandler("ataque", ataque), group=2)
+    app.add_handler(CommandHandler("aceptarlucha", aceptar_lucha), group=2)
+    app.add_handler(CommandHandler("dados", dados), group=2)
+    app.add_handler(CommandHandler("ataque", ataque), group=2)  # Backward compatibility
 
     # Group 3: Reward handler (automatic rewards for images)
     app.add_handler(

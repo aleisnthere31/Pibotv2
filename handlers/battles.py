@@ -1,13 +1,14 @@
 """
 Battle/Combat system handler for PiBot.
 
-Implements D&D-style battle mechanics with:
-- Health points (HP)
-- Dice rolls for damage
-- Turn-based combat
-- Betting on battles
+Refactored battle system with:
+- Challenge phase (/lucha [@usuario] [cantidad])
+- 60-second acceptance phase (/aceptar lucha)
+- Turn-based combat with dice rolls
+- Dice emoji as damage system
 """
 
+import asyncio
 import random
 from datetime import datetime, timedelta
 from telegram import Update
@@ -19,7 +20,16 @@ from src.database.database import (
 )
 
 
-# ==================== BATTLE OPERATIONS ====================
+# ==================== IN-MEMORY BATTLE STATE ====================
+# Pending challenges: {user_id: {"opponent_id": id, "opponent_username": username, "apuesta": amount, "timestamp": datetime}}
+pending_challenges = {}
+
+# ==================== IN-MEMORY BATTLE STATE ====================
+# Pending challenges: {user_id: {"opponent_id": id, "opponent_username": username, "apuesta": amount, "timestamp": datetime}}
+pending_challenges = {}
+
+
+# ==================== DATABASE OPERATIONS ====================
 
 def crear_combate(id_atacante: int, id_defensor: int, username_atacante: str,
                   username_defensor: str, apuesta: int) -> int:
@@ -222,32 +232,41 @@ def get_combate_by_id(id_combate: int) -> dict:
 
 async def lucha(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Start a battle with another user.
+    Start a battle challenge with another user.
     Syntax: /lucha [@username] [cantidad]
     
-    Args:
-        update: Telegram update
-        context: Command context
+    The opponent has 60 seconds to accept with /aceptar lucha
     """
     sender = update.effective_user
+    sender_username = sender.username or f"Usuario{sender.id}"
     
-    # Check if sender already in combat
-    combate_activo = get_combate_activo(sender.id)
-    if combate_activo:
+    # Check if sender already has a pending challenge or active combat
+    if sender.id in pending_challenges:
         await update.message.reply_text(
-            "⚔️ Ya estás en un combate activo.\n"
-            "Espera a que termine antes de empezar otro."
+            "⚔️ Ya tienes un desafío pendiente.\n"
+            "Espera a que sea aceptado o rechazado."
         )
         return
     
-    # Parse arguments: /lucha [@usuario] [cantidad]
+    if get_combate_activo(sender.id):
+        await update.message.reply_text(
+            "⚔️ Ya estás en un combate activo.\n"
+            "Termina el combate antes de retarme a otro."
+        )
+        return
+    
+    # Parse arguments
     if not context.args or len(context.args) < 2:
         await update.message.reply_text(
-            "Uso: /lucha @usuario cantidad\n"
+            "📋 Uso: /lucha @usuario cantidad\n"
             "Ejemplo: /lucha @juan 50\n\n"
-            "⚔️ Empezarás con 20 HP\n"
-            "🎲 Cada turno lanzarás un dado para infliar daño\n"
-            "💰 El ganador se queda con la apuesta"
+            "⚔️ Cómo funciona:\n"
+            "1️⃣ Retar a alguien (tiene 60s para aceptar)\n"
+            "2️⃣ Si acepta, inicia el combate\n"
+            "3️⃣ Lanzan dados por turnos alternados\n"
+            "4️⃣ El resultado del dado = daño\n"
+            "5️⃣ Primero en llegar a 0 HP pierde\n"
+            "💰 El ganador se queda con la apuesta doble"
         )
         return
     
@@ -263,7 +282,14 @@ async def lucha(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     if opponent_id == sender.id:
-        await update.message.reply_text("❌ No puedes luchar contra ti mismo")
+        await update.message.reply_text("❌ No puedes retarte a ti mismo")
+        return
+    
+    # Check if opponent already has a pending challenge or active combat
+    if opponent_id in pending_challenges or get_combate_activo(opponent_id):
+        await update.message.reply_text(
+            f"❌ @{opponent_username} ya está en un combate o tiene un desafío pendiente"
+        )
         return
     
     # Get bet amount
@@ -283,119 +309,220 @@ async def lucha(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if saldo_atacante < apuesta:
         await update.message.reply_text(
-            f"❌ No tienes suficientes PiPesos\n"
-            f"Tienes: {saldo_atacante} | Necesitas: {apuesta}"
+            f"❌ Saldo insuficiente\n"
+            f"Tienes: {saldo_atacante} PiPesos | Necesitas: {apuesta}"
         )
         return
     
     if saldo_defensor < apuesta:
         await update.message.reply_text(
-            f"❌ @{opponent_username} no tiene suficientes PiPesos para apostar\n"
+            f"❌ @{opponent_username} no tiene suficientes PiPesos\n"
             f"Tiene: {saldo_defensor} | Necesita: {apuesta}"
         )
-        return
-    
-    # Create combat
-    sender_username = sender.username or f"Usuario{sender.id}"
-    combat_id = crear_combate(
-        sender.id, opponent_id,
-        sender_username,
-        opponent_username,
-        apuesta
-    )
-    
-    if combat_id == -1:
-        await update.message.reply_text("❌ Error al crear el combate")
         return
     
     # Deduct bet from both players
     quitar_puntos(sender.id, apuesta)
     quitar_puntos(opponent_id, apuesta)
     
-    # Send challenge message
-    mensaje = (
-        f"⚔️ **¡COMBATE INICIADO!**\n\n"
-        f"🥊 {sender_username} ⚔️ @{opponent_username}\n"
-        f"❤️ HP: 20 vs 20\n"
-        f"💰 Apuesta: {apuesta} PiPesos cada uno\n\n"
-        f"Turno actual: {sender_username}\n"
-        f"Usa /ataque para atacar al oponente"
+    # Store challenge in memory
+    pending_challenges[sender.id] = {
+        "opponent_id": opponent_id,
+        "opponent_username": opponent_username,
+        "apuesta": apuesta,
+        "timestamp": datetime.now()
+    }
+    
+    # Send challenge message to opponent
+    challenge_msg = (
+        f"⚔️ **¡DESAFÍO DE LUCHA!**\n\n"
+        f"🥊 {sender_username} te reta a batalla\n"
+        f"💰 Apuesta: {apuesta} PiPesos para cada uno\n\n"
+        f"⏱️ Tienes 60 segundos para aceptar\n"
+        f"Escribe: /aceptarlucha"
     )
     
-    await update.message.reply_text(mensaje, parse_mode='Markdown')
+    await context.bot.send_message(
+        chat_id=opponent_id,
+        text=challenge_msg,
+        parse_mode='Markdown'
+    )
+    
+    await update.message.reply_text(
+        f"✅ Desafío enviado a @{opponent_username}\n"
+        f"Esperando su respuesta... ⏳"
+    )
+    
+    # Setup 60-second timeout
+    async def timeout_challenge():
+        await asyncio.sleep(60)
+        if sender.id in pending_challenges:
+            # Challenge expired
+            del pending_challenges[sender.id]
+            
+            # Return bet to both players
+            dar_puntos(sender.id, apuesta)
+            dar_puntos(opponent_id, apuesta)
+            
+            await context.bot.send_message(
+                chat_id=opponent_id,
+                text=f"⏱️ El desafío de {sender_username} expiró sin respuesta"
+            )
+            await context.bot.send_message(
+                chat_id=sender.id,
+                text=f"⏱️ @{opponent_username} no aceptó el desafío\n"
+                f"Se devolvieron {apuesta} PiPesos"
+            )
+    
+    asyncio.create_task(timeout_challenge())
 
 
-async def ataque(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def aceptar_lucha(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Perform an attack in an active battle.
-    Rolls a d12 for damage.
-    
-    Args:
-        update: Telegram update
-        context: Command context
+    Accept a battle challenge.
+    Syntax: /aceptarlucha
     """
-    sender = update.effective_user
+    user = update.effective_user
+    user_id = user.id
+    user_username = user.username or f"Usuario{user_id}"
     
-    # Get active combat
-    combate = get_combate_activo(sender.id)
+    # Check if there's a challenge for this user
+    challenge = None
+    challenger_id = None
     
-    if not combate:
+    for chall_id, chall_data in pending_challenges.items():
+        if chall_data["opponent_id"] == user_id:
+            challenge = chall_data
+            challenger_id = chall_id
+            break
+    
+    if not challenge:
         await update.message.reply_text(
-            "❌ No tienes un combate activo\n"
-            "Usa /lucha @usuario cantidad para iniciar uno"
+            "❌ No tienes ningún desafío pendiente\n"
+            "Alguien debe retarte primero con /lucha"
         )
         return
     
-    # Check if combat has expired (60 seconds without attacks)
-    fecha_inicio = datetime.fromisoformat(combate['fecha_inicio'])
-    tiempo_transcurrido = datetime.now() - fecha_inicio
+    # Check timeout (60 seconds)
+    time_elapsed = datetime.now() - challenge["timestamp"]
+    if time_elapsed > timedelta(seconds=60):
+        # Challenge expired
+        if challenger_id in pending_challenges:
+            del pending_challenges[challenger_id]
+        
+        await update.message.reply_text("⏱️ Este desafío ya expiró")
+        return
     
-    if tiempo_transcurrido > timedelta(seconds=60):
-        # Combat expired - loser is the one whose turn it was
-        id_ganador = combate['id_defensor'] if combate['es_turno_atacante'] else combate['id_atacante']
-        terminar_combate(combate['id_combate'], id_ganador)
-        
-        nombre_ganador = combate['username_defensor'] if combate['es_turno_atacante'] else combate['username_atacante']
-        nombre_perdedor = combate['username_atacante'] if combate['es_turno_atacante'] else combate['username_defensor']
-        
+    # Remove challenge from pending
+    del pending_challenges[challenger_id]
+    
+    # Get challenger info
+    challenger_username = get_campo_usuario(challenger_id, "username")
+    if not challenger_username:
+        challenger_username = f"Usuario{challenger_id}"
+    
+    apuesta = challenge["apuesta"]
+    
+    # Create combat
+    combat_id = crear_combate(
+        challenger_id, user_id,
+        challenger_username,
+        user_username,
+        apuesta
+    )
+    
+    if combat_id == -1:
+        await update.message.reply_text("❌ Error al crear el combate")
+        # Refund the bets
+        dar_puntos(challenger_id, apuesta)
+        dar_puntos(user_id, apuesta)
+        return
+    
+    # Get combat details
+    combate = get_combate_by_id(combat_id)
+    
+    # Start combat message
+    start_msg = (
+        f"⚔️ **¡COMBATE INICIADO!**\n\n"
+        f"🥊 {combate['username_atacante']} vs {combate['username_defensor']}\n"
+        f"❤️ HP: 20 vs 20\n"
+        f"💰 Apuesta: {apuesta} PiPesos para cada jugador\n\n"
+        f"📊 Primer turno: @{combate['username_atacante']}\n"
+        f"🎲 Escribe: /dados para lanzar el dado y atacar"
+    )
+    
+    # Send to both players
+    await context.bot.send_message(
+        chat_id=challenger_id,
+        text=start_msg,
+        parse_mode='Markdown'
+    )
+    await context.bot.send_message(
+        chat_id=user_id,
+        text=start_msg,
+        parse_mode='Markdown'
+    )
+    
+    await update.message.reply_text("✅ ¡Combate iniciado!")
+
+
+async def dados(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Attack with a dice roll. The dice result is the damage.
+    Syntax: /dados
+    """
+    sender = update.effective_user
+    sender_id = sender.id
+    sender_username = sender.username or f"Usuario{sender_id}"
+    
+    # Get active combat
+    combate = get_combate_activo(sender_id)
+    
+    if not combate:
         await update.message.reply_text(
-            f"⏱️ **¡COMBATE EXPIRADO!**\n\n"
-            f"❌ {nombre_perdedor} no atacó en 60 segundos\n"
-            f"🏆 {nombre_ganador} gana por inactividad\n"
-            f"💰 Ganador recibió {combate['apuesta'] * 2} PiPesos",
-            parse_mode='Markdown'
+            "❌ No estás en un combate activo\n"
+            "Usa /lucha @usuario cantidad para retar a alguien"
         )
         return
     
     # Check if it's the sender's turn
     es_turno = (
-        (combate['es_turno_atacante'] == 1 and combate['id_atacante'] == sender.id) or
-        (combate['es_turno_atacante'] == 0 and combate['id_defensor'] == sender.id)
+        (combate['es_turno_atacante'] == 1 and combate['id_atacante'] == sender_id) or
+        (combate['es_turno_atacante'] == 0 and combate['id_defensor'] == sender_id)
     )
     
     if not es_turno:
-        atacante_nombre = combate['username_atacante'] if combate['es_turno_atacante'] else combate['username_defensor']
-        await update.message.reply_text(f"⏳ Es el turno de {atacante_nombre}")
+        turno_de = combate['username_atacante'] if combate['es_turno_atacante'] else combate['username_defensor']
+        await update.message.reply_text(
+            f"⏳ No es tu turno\n"
+            f"Aguarda a que {turno_de} ataque"
+        )
         return
     
-    # Roll d12 for damage
-    daño = random.randint(1, 12)
+    # Send dice roll (visual d6)
+    dice_message = await context.bot.send_dice(
+        chat_id=update.effective_chat.id,
+        emoji="🎲"
+    )
+    
+    # Get damage from dice result (1-6)
+    daño = dice_message.dice.value
     
     # Determine attacker and defender based on current turn
-    # es_turno_atacante == 1: Original attacker's turn (deals damage to defender)
-    # es_turno_atacante == 0: Original defender's turn (deals damage to attacker)
     if combate['es_turno_atacante'] == 1:
-        # Original attacker is attacking, original defender takes damage
         hp_defensor = combate['hp_defensor'] - daño
         hp_atacante = combate['hp_atacante']
         atacante_nombre = combate['username_atacante']
         defensor_nombre = combate['username_defensor']
+        id_atacante_turno = combate['id_atacante']
+        id_defensor_turno = combate['id_defensor']
     else:
-        # Original defender is attacking, original attacker takes damage
         hp_atacante = combate['hp_atacante'] - daño
         hp_defensor = combate['hp_defensor']
         atacante_nombre = combate['username_defensor']
         defensor_nombre = combate['username_atacante']
+        id_atacante_turno = combate['id_defensor']
+        id_defensor_turno = combate['id_atacante']
     
     # Ensure HP doesn't go below 0
     hp_atacante = max(0, hp_atacante)
@@ -412,27 +539,74 @@ async def ataque(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Check if combat is over
     if hp_defensor <= 0:
-        # Attacker wins - determine who was attacking this turn
-        id_ganador = combate['id_atacante'] if combate['es_turno_atacante'] == 1 else combate['id_defensor']
+        # Attacker wins
+        id_ganador = id_atacante_turno
         terminar_combate(combate['id_combate'], id_ganador)
         
-        mensaje = (
+        # Determine actual original roles for message
+        if combate['es_turno_atacante'] == 1:
+            ganador_name = combate['username_atacante']
+            perdedor_name = combate['username_defensor']
+        else:
+            ganador_name = combate['username_defensor']
+            perdedor_name = combate['username_atacante']
+        
+        fin_msg = (
             f"🎉 **¡COMBATE FINALIZADO!**\n\n"
-            f"🏆 Ganador: {atacante_nombre}\n"
-            f"💀 Perdedor: {defensor_nombre}\n\n"
-            f"🎲 Turno {combate['turno']}: {atacante_nombre} atacó por {daño} de daño\n"
+            f"🏆 Ganador: {ganador_name}\n"
+            f"💀 Perdedor: {perdedor_name}\n\n"
+            f"🎲 Último turno: {atacante_nombre} lanzó {daño} de daño\n"
+            f"❤️ {ganador_name}: {hp_atacante if id_ganador == combate['id_atacante'] else hp_defensor} HP\n"
+            f"💀 {perdedor_name}: 0 HP\n\n"
             f"💰 Ganador recibió {combate['apuesta'] * 2} PiPesos"
         )
-    else:
-        # Combat continues
-        siguiente_atacante = defensor_nombre if combate['es_turno_atacante'] == 1 else atacante_nombre
         
-        mensaje = (
-            f"⚔️ **{siguiente_atacante} ataca!**\n\n"
-            f"{atacante_nombre}: ❤️ {hp_atacante}\n"
-            f"{defensor_nombre}: ❤️ {hp_defensor}\n\n"
-            f"🎲 {atacante_nombre} lanzó {daño} de daño\n"
-            f"📊 {siguiente_atacante}, es tu turno. Usa /ataque"
+        await context.bot.send_message(
+            chat_id=combate['id_atacante'],
+            text=fin_msg,
+            parse_mode='Markdown'
         )
-    
-    await update.message.reply_text(mensaje, parse_mode='Markdown')
+        await context.bot.send_message(
+            chat_id=combate['id_defensor'],
+            text=fin_msg,
+            parse_mode='Markdown'
+        )
+    else:
+        # Combat continues - prepare next turn message
+        siguiente_atacante = defensor_nombre if combate['es_turno_atacante'] == 1 else atacante_nombre
+        siguiente_id = id_defensor_turno
+        
+        # Determine original roles for status display
+        original_atacante = combate['username_atacante']
+        original_defensor = combate['username_defensor']
+        
+        combate_msg = (
+            f"⚔️ **COMBATE EN CURSO**\n\n"
+            f"{original_atacante}: ❤️ {hp_atacante}\n"
+            f"{original_defensor}: ❤️ {hp_defensor}\n\n"
+            f"🎲 {atacante_nombre} lanzó {daño} de daño\n\n"
+            f"📊 Turno de: @{siguiente_atacante}\n"
+            f"Escribe: /dados para atacar"
+        )
+        
+        # Send to both players
+        await context.bot.send_message(
+            chat_id=combate['id_atacante'],
+            text=combate_msg,
+            parse_mode='Markdown'
+        )
+        await context.bot.send_message(
+            chat_id=combate['id_defensor'],
+            text=combate_msg,
+            parse_mode='Markdown'
+        )
+        
+        # Notify whose turn it is with special mention
+        await context.bot.send_message(
+            chat_id=siguiente_id,
+            text=f"🎲 Es tu turno, @{siguiente_atacante}. Usa /dados para atacar"
+        )
+
+
+# Keep old 'ataque' function for compatibility (maps to 'dados')
+ataque = dados
