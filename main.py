@@ -33,7 +33,7 @@ from handlers.general import dar, ver, regalar, numero_azar, quitar
 from handlers.starting_menu import start, menu_callback
 from handlers.tienda import tienda, tienda_callback
 from handlers.inventario import inventario, inventario_callback, usar
-from handlers.battles import lucha, ataque, aceptar_lucha, dados
+from handlers.battles import lucha, ataque, aceptar_lucha
 
 # Handler imports - Games and rewards
 from handlers.theme_juegosYcasino import (
@@ -353,6 +353,7 @@ def main() -> None:
     app.add_handler(CommandHandler("robar", robar), group=1)
     app.add_handler(CommandHandler("jugar", jugar), group=1)
     app.add_handler(CommandHandler("usar", usar), group=1)
+    # MessageHandler for dice - handles both betting and combat
     app.add_handler(MessageHandler(filters.Dice.DICE, detectar_dado), group=1)
 
     # Group 2: Economy and general commands
@@ -369,7 +370,7 @@ def main() -> None:
     # Group 2.5: Battle/Combat system (refactored)
     app.add_handler(CommandHandler("lucha", lucha), group=2)
     app.add_handler(CommandHandler("aceptarlucha", aceptar_lucha), group=2)
-    app.add_handler(MessageHandler(filters.Dice.DICE, dados), group=2)  # Dice emoji for combat attacks
+    # Dice handler for combat is in group=1 with detectar_dado
     app.add_handler(CommandHandler("ataque", ataque), group=2)  # Backward compatibility
 
     # Group 3: Reward handler (automatic rewards for images)

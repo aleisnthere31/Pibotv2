@@ -12,7 +12,7 @@ import asyncio
 import random
 from datetime import datetime, timedelta
 from telegram import Update
-from telegram.ext import ContextTypes, CommandHandler, MessageHandler, filters
+from telegram.ext import ContextTypes, CommandHandler
 
 from src.database.database import (
     get_campo_usuario, update_saldo, dar_puntos, quitar_puntos,
@@ -466,138 +466,10 @@ async def aceptar_lucha(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ ¡Combate iniciado!")
 
 
-async def dados(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Attack with a dice roll. Triggered when user sends a dice emoji 🎲
-    The dice result (1-6) is the damage dealt to the opponent.
-    """
-    sender = update.effective_user
-    sender_id = sender.id
-    sender_username = sender.username or f"Usuario{sender_id}"
-    
-    # Get active combat
-    combate = get_combate_activo(sender_id)
-    
-    if not combate:
-        # User sent a dice but not in combat - ignore silently
-        return
-    
-    # Check if it's the sender's turn
-    es_turno = (
-        (combate['es_turno_atacante'] == 1 and combate['id_atacante'] == sender_id) or
-        (combate['es_turno_atacante'] == 0 and combate['id_defensor'] == sender_id)
-    )
-    
-    if not es_turno:
-        turno_de = combate['username_atacante'] if combate['es_turno_atacante'] else combate['username_defensor']
-        await update.message.reply_text(
-            f"⏳ No es tu turno\n"
-            f"Aguarda a que {turno_de} ataque"
-        )
-        return
-    
-    # Get damage from dice result (1-6)
-    daño = update.message.dice.value
-    
-    # Determine attacker and defender based on current turn
-    if combate['es_turno_atacante'] == 1:
-        hp_defensor = combate['hp_defensor'] - daño
-        hp_atacante = combate['hp_atacante']
-        atacante_nombre = combate['username_atacante']
-        defensor_nombre = combate['username_defensor']
-        id_atacante_turno = combate['id_atacante']
-        id_defensor_turno = combate['id_defensor']
-    else:
-        hp_atacante = combate['hp_atacante'] - daño
-        hp_defensor = combate['hp_defensor']
-        atacante_nombre = combate['username_defensor']
-        defensor_nombre = combate['username_atacante']
-        id_atacante_turno = combate['id_defensor']
-        id_defensor_turno = combate['id_atacante']
-    
-    # Ensure HP doesn't go below 0
-    hp_atacante = max(0, hp_atacante)
-    hp_defensor = max(0, hp_defensor)
-    
-    # Update combat
-    actualizar_combate(
-        combate['id_combate'],
-        hp_atacante=hp_atacante,
-        hp_defensor=hp_defensor,
-        es_turno_atacante=1 if combate['es_turno_atacante'] == 0 else 0,
-        turno=combate['turno'] + 1
-    )
-    
-    # Check if combat is over
-    if hp_defensor <= 0:
-        # Attacker wins
-        id_ganador = id_atacante_turno
-        terminar_combate(combate['id_combate'], id_ganador)
-        
-        # Determine actual original roles for message
-        if combate['es_turno_atacante'] == 1:
-            ganador_name = combate['username_atacante']
-            perdedor_name = combate['username_defensor']
-        else:
-            ganador_name = combate['username_defensor']
-            perdedor_name = combate['username_atacante']
-        
-        fin_msg = (
-            f"🎉 **¡COMBATE FINALIZADO!**\n\n"
-            f"🏆 Ganador: {ganador_name}\n"
-            f"💀 Perdedor: {perdedor_name}\n\n"
-            f"🎲 Último turno: {atacante_nombre} lanzó {daño} de daño\n"
-            f"❤️ {ganador_name}: {hp_atacante if id_ganador == combate['id_atacante'] else hp_defensor} HP\n"
-            f"💀 {perdedor_name}: 0 HP\n\n"
-            f"💰 Ganador recibió {combate['apuesta'] * 2} PiPesos"
-        )
-        
-        await context.bot.send_message(
-            chat_id=combate['id_atacante'],
-            text=fin_msg,
-            parse_mode='Markdown'
-        )
-        await context.bot.send_message(
-            chat_id=combate['id_defensor'],
-            text=fin_msg,
-            parse_mode='Markdown'
-        )
-    else:
-        # Combat continues - prepare next turn message
-        siguiente_atacante = defensor_nombre if combate['es_turno_atacante'] == 1 else atacante_nombre
-        siguiente_id = id_defensor_turno
-        
-        # Determine original roles for status display
-        original_atacante = combate['username_atacante']
-        original_defensor = combate['username_defensor']
-        
-        combate_msg = (
-            f"⚔️ **COMBATE EN CURSO**\n\n"
-            f"{original_atacante}: ❤️ {hp_atacante}\n"
-            f"{original_defensor}: ❤️ {hp_defensor}\n\n"
-            f"🎲 {atacante_nombre} lanzó {daño} de daño\n\n"
-            f"📊 Turno de: @{siguiente_atacante}\n"
-            f"Lanza el dado 🎲 para atacar"
-        )
-        
-        # Send to both players
-        await context.bot.send_message(
-            chat_id=combate['id_atacante'],
-            text=combate_msg,
-            parse_mode='Markdown'
-        )
-        await context.bot.send_message(
-            chat_id=combate['id_defensor'],
-            text=combate_msg,
-            parse_mode='Markdown'
-        )
-        
-        # Notify whose turn it is with special mention
-        await context.bot.send_message(
-            chat_id=siguiente_id,
-            text=f"🎲 Es tu turno, @{siguiente_atacante}. Lanza el dado para atacar"
-        )
 
 
-# Keep old 'ataque' function for compatibility (maps to 'dados')
-ataque = dados
+# Keep old 'ataque' function for compatibility (unused now)
+async def ataque(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Obsolete - use dice emoji 🎲 instead"""
+    await update.message.reply_text("Este comando ya no se usa. Lanza un dado 🎲 en tu turno.")
+
