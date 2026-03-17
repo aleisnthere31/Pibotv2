@@ -12,7 +12,7 @@ import asyncio
 import random
 from datetime import datetime, timedelta
 from telegram import Update
-from telegram.ext import ContextTypes, CommandHandler
+from telegram.ext import ContextTypes, CommandHandler, MessageHandler, filters
 
 from src.database.database import (
     get_campo_usuario, update_saldo, dar_puntos, quitar_puntos,
@@ -264,7 +264,7 @@ async def lucha(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "1️⃣ Retar a alguien (tiene 60s para aceptar)\n"
             "2️⃣ Si acepta, inicia el combate\n"
             "3️⃣ Lanzan dados por turnos alternados\n"
-            "4️⃣ El resultado del dado = daño\n"
+            "4️⃣ Lanza el dado 🎲 (el resultado es el daño)\n"
             "5️⃣ Primero en llegar a 0 HP pierde\n"
             "💰 El ganador se queda con la apuesta doble"
         )
@@ -448,7 +448,7 @@ async def aceptar_lucha(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"❤️ HP: 20 vs 20\n"
         f"💰 Apuesta: {apuesta} PiPesos para cada jugador\n\n"
         f"📊 Primer turno: @{combate['username_atacante']}\n"
-        f"🎲 Escribe: /dados para lanzar el dado y atacar"
+        f"🎲 Lanza el dado 🎲 para atacar"
     )
     
     # Send to both players
@@ -468,8 +468,8 @@ async def aceptar_lucha(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def dados(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
-    Attack with a dice roll. The dice result is the damage.
-    Syntax: /dados
+    Attack with a dice roll. Triggered when user sends a dice emoji 🎲
+    The dice result (1-6) is the damage dealt to the opponent.
     """
     sender = update.effective_user
     sender_id = sender.id
@@ -479,10 +479,7 @@ async def dados(update: Update, context: ContextTypes.DEFAULT_TYPE):
     combate = get_combate_activo(sender_id)
     
     if not combate:
-        await update.message.reply_text(
-            "❌ No estás en un combate activo\n"
-            "Usa /lucha @usuario cantidad para retar a alguien"
-        )
+        # User sent a dice but not in combat - ignore silently
         return
     
     # Check if it's the sender's turn
@@ -499,14 +496,8 @@ async def dados(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # Send dice roll (visual d6)
-    dice_message = await context.bot.send_dice(
-        chat_id=update.effective_chat.id,
-        emoji="🎲"
-    )
-    
     # Get damage from dice result (1-6)
-    daño = dice_message.dice.value
+    daño = update.message.dice.value
     
     # Determine attacker and defender based on current turn
     if combate['es_turno_atacante'] == 1:
@@ -586,7 +577,7 @@ async def dados(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"{original_defensor}: ❤️ {hp_defensor}\n\n"
             f"🎲 {atacante_nombre} lanzó {daño} de daño\n\n"
             f"📊 Turno de: @{siguiente_atacante}\n"
-            f"Escribe: /dados para atacar"
+            f"Lanza el dado 🎲 para atacar"
         )
         
         # Send to both players
@@ -604,7 +595,7 @@ async def dados(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Notify whose turn it is with special mention
         await context.bot.send_message(
             chat_id=siguiente_id,
-            text=f"🎲 Es tu turno, @{siguiente_atacante}. Usa /dados para atacar"
+            text=f"🎲 Es tu turno, @{siguiente_atacante}. Lanza el dado para atacar"
         )
 
 

@@ -369,7 +369,7 @@ def main() -> None:
     # Group 2.5: Battle/Combat system (refactored)
     app.add_handler(CommandHandler("lucha", lucha), group=2)
     app.add_handler(CommandHandler("aceptarlucha", aceptar_lucha), group=2)
-    app.add_handler(CommandHandler("dados", dados), group=2)
+    app.add_handler(MessageHandler(filters.Dice.DICE, dados), group=2)  # Dice emoji for combat attacks
     app.add_handler(CommandHandler("ataque", ataque), group=2)  # Backward compatibility
 
     # Group 3: Reward handler (automatic rewards for images)
