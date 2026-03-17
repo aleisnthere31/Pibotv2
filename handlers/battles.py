@@ -346,11 +346,11 @@ async def ataque(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # Check if combat has expired (30 seconds without attacks)
+    # Check if combat has expired (60 seconds without attacks)
     fecha_inicio = datetime.fromisoformat(combate['fecha_inicio'])
     tiempo_transcurrido = datetime.now() - fecha_inicio
     
-    if tiempo_transcurrido > timedelta(seconds=30):
+    if tiempo_transcurrido > timedelta(seconds=60):
         # Combat expired - loser is the one whose turn it was
         id_ganador = combate['id_defensor'] if combate['es_turno_atacante'] else combate['id_atacante']
         terminar_combate(combate['id_combate'], id_ganador)
@@ -360,7 +360,7 @@ async def ataque(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await update.message.reply_text(
             f"⏱️ **¡COMBATE EXPIRADO!**\n\n"
-            f"❌ {nombre_perdedor} no atacó en 30 segundos\n"
+            f"❌ {nombre_perdedor} no atacó en 60 segundos\n"
             f"🏆 {nombre_ganador} gana por inactividad\n"
             f"💰 Ganador recibió {combate['apuesta'] * 2} PiPesos",
             parse_mode='Markdown'
@@ -381,13 +381,17 @@ async def ataque(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Roll d12 for damage
     daño = random.randint(1, 12)
     
-    # Determine attacker and defender
-    if combate['id_atacante'] == sender.id:
+    # Determine attacker and defender based on current turn
+    # es_turno_atacante == 1: Original attacker's turn (deals damage to defender)
+    # es_turno_atacante == 0: Original defender's turn (deals damage to attacker)
+    if combate['es_turno_atacante'] == 1:
+        # Original attacker is attacking, original defender takes damage
         hp_defensor = combate['hp_defensor'] - daño
         hp_atacante = combate['hp_atacante']
         atacante_nombre = combate['username_atacante']
         defensor_nombre = combate['username_defensor']
     else:
+        # Original defender is attacking, original attacker takes damage
         hp_atacante = combate['hp_atacante'] - daño
         hp_defensor = combate['hp_defensor']
         atacante_nombre = combate['username_defensor']
@@ -408,8 +412,8 @@ async def ataque(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Check if combat is over
     if hp_defensor <= 0:
-        # Attacker wins
-        id_ganador = sender.id
+        # Attacker wins - determine who was attacking this turn
+        id_ganador = combate['id_atacante'] if combate['es_turno_atacante'] == 1 else combate['id_defensor']
         terminar_combate(combate['id_combate'], id_ganador)
         
         mensaje = (
