@@ -257,7 +257,12 @@ async def jugar(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "veces":0
         }
         juego_ejecutado = juego.get(user_id)
-    tmp_fecha = juego_ejecutado["fecha"]
+    else:
+        # Resetear contador si cambió el día
+        if juego_ejecutado["fecha"] != hoy:
+            juego_ejecutado["fecha"] = hoy
+            juego_ejecutado["veces"] = 0
+    
     tmp_veces = juego_ejecutado["veces"]
     
     if tmp_veces >= 5:
@@ -334,14 +339,23 @@ async def robar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     robbed_username = robbed_user.username
     
     # 4) Control de uso diario
+    hoy_robo = datetime.now().strftime("%Y-%m-%d")
     if robar_usuarios.get(robber_id) is None:
-        robar_usuarios[robber_id] = 0
+        robar_usuarios[robber_id] = {
+            "fecha": hoy_robo,
+            "veces": 0
+        }
+    else:
+        # Resetear contador si cambió el día
+        if robar_usuarios[robber_id]["fecha"] != hoy_robo:
+            robar_usuarios[robber_id]["fecha"] = hoy_robo
+            robar_usuarios[robber_id]["veces"] = 0
 
-    if robar_usuarios.get(robber_id) >= 3:
-        await update.message.reply_text("⚠️ Solo puedes usar /robar 3 vez al día.")
+    if robar_usuarios[robber_id]["veces"] >= 3:
+        await update.message.reply_text("⚠️ Solo puedes usar /robar 3 veces al día.")
         return
 
-    robar_usuarios[robber_id] = robar_usuarios[robber_id]+1 
+    robar_usuarios[robber_id]["veces"] = robar_usuarios[robber_id]["veces"] + 1 
 
     exito = random.choice([True, False, False])
 
