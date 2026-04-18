@@ -26,7 +26,7 @@ from telegram.ext import (
 
 # Local imports
 from src.config import BOT_TOKEN, DOMS, obtener_temas_por_comunidad, PUNISHMENT_FILE, BOTMASTER_IDS
-from src.database.database import create_database, create_tables, restart_all_combats, seed_items, init_botmaster_roles
+from src.database.database import create_database, create_tables, restart_all_combats, seed_items, init_botmaster_roles, get_campo_usuario, insert_user, normalizar_nombre, update_perfil
 
 # Handler imports - General commands
 from handlers.general import dar, ver, regalar, numero_azar, quitar
@@ -47,6 +47,28 @@ from handlers.welcoming import nuevo_usuario, mensaje_de_presentaciones
 
 # Constants
 RUTA_CASTIGADOS = PUNISHMENT_FILE
+
+
+# ==================== AUTO-REGISTRATION ====================
+
+async def auto_registrar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Silently register any user who sends a message, if not already in the DB.
+    Runs in group -2 (before everything else) and never blocks other handlers.
+    """
+    user = update.effective_user
+    if not user or user.is_bot:
+        return
+
+    try:
+        existing = get_campo_usuario(user.id, "id_user")
+        if existing is None:
+            nombre = normalizar_nombre(user.first_name, user.last_name or "")
+            insert_user(user.id, 0, user.username, nombre)
+        elif user.username and get_campo_usuario(user.id, "username") != user.username:
+            update_perfil(user.id, username=user.username)
+    except Exception as e:
+        print(f"[AUTO-REG] Error: {e}")
 
 # ==================== PUNISHMENT SYSTEM FUNCTIONS ====================
 
@@ -344,6 +366,9 @@ def main() -> None:
     restart_all_combats()
     
     app = Application.builder().token(BOT_TOKEN).build()
+
+    # Group -2: Auto-register users on any message (silent, never blocks)
+    app.add_handler(MessageHandler(filters.ALL, auto_registrar), group=-2)
 
     # Group -1: Community blocking filter (runs first, can stop others)
     app.add_handler(MessageHandler(filters.ALL, bloquear_comunidad), group=-1)
