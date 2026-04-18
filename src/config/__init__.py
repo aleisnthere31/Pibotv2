@@ -6,7 +6,9 @@ from .settings import (
     ADMINS,
     DOMS,
     PUNISHMENT_FILE,
-    DATABASE_FILE,
+    DATABASE_URL,
+    BOT_USERNAME,
+    BOTMASTER_IDS,
     obtener_temas_por_comunidad,
     obtener_admins_comunidad,
 )
@@ -17,7 +19,9 @@ __all__ = [
     "ADMINS",
     "DOMS",
     "PUNISHMENT_FILE",
-    "DATABASE_FILE",
+    "DATABASE_URL",
+    "BOT_USERNAME",
+    "BOTMASTER_IDS",
     "obtener_temas_por_comunidad",
     "obtener_admins_comunidad",
 ]

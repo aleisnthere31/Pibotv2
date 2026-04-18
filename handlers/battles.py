@@ -16,7 +16,7 @@ from telegram.ext import ContextTypes, CommandHandler
 
 from src.database.database import (
     get_campo_usuario, update_saldo, dar_puntos, quitar_puntos,
-    _get_connection
+    _get_connection, _put_connection
 )
 
 
@@ -36,64 +36,49 @@ def crear_combate(id_atacante: int, id_defensor: int, username_atacante: str,
     """
     Create a new battle in the database.
     
-    Args:
-        id_atacante: Attacker's Telegram ID
-        id_defensor: Defender's Telegram ID
-        username_atacante: Attacker's username
-        username_defensor: Defender's username
-        apuesta: Bet amount in PiPesos
-    
     Returns:
         Combat ID or -1 if failed
     """
+    conn = _get_connection()
     try:
-        conn = _get_connection()
         cursor = conn.cursor()
-        cursor.execute("PRAGMA foreign_keys = ON;")
         
         cursor.execute("""
             INSERT INTO combates_tb 
             (id_atacante, id_defensor, username_atacante, username_defensor, apuesta, hp_atacante, hp_defensor)
-            VALUES (?, ?, ?, ?, ?, 20, 20)
+            VALUES (%s, %s, %s, %s, %s, 20, 20)
+            RETURNING id_combate
         """, (id_atacante, id_defensor, username_atacante, username_defensor, apuesta))
         
+        combat_id = cursor.fetchone()[0]
         conn.commit()
-        combat_id = cursor.lastrowid
-        conn.close()
         return combat_id
     except Exception as e:
+        conn.rollback()
         print(f"[ERROR DB] Failed to create battle: {e}")
         return -1
+    finally:
+        _put_connection(conn)
 
 
 def get_combate_activo(id_user: int) -> dict:
-    """
-    Get active combat for a user (as attacker or defender).
-    
-    Args:
-        id_user: User's Telegram ID
-    
-    Returns:
-        Combat dictionary or None if no active combat
-    """
+    """Get active combat for a user (as attacker or defender)."""
+    conn = _get_connection()
     try:
-        conn = _get_connection()
         cursor = conn.cursor()
         
         cursor.execute("""
             SELECT * FROM combates_tb 
-            WHERE (id_atacante = ? OR id_defensor = ?) 
+            WHERE (id_atacante = %s OR id_defensor = %s) 
             AND estado = 'activo'
             LIMIT 1
         """, (id_user, id_user))
         
         resultado = cursor.fetchone()
-        conn.close()
         
         if not resultado:
             return None
         
-        # Convert tuple to dict
         return {
             'id_combate': resultado[0],
             'id_atacante': resultado[1],
@@ -112,19 +97,12 @@ def get_combate_activo(id_user: int) -> dict:
     except Exception as e:
         print(f"[ERROR DB] Error getting active combat: {e}")
         return None
+    finally:
+        _put_connection(conn)
 
 
 def actualizar_combate(id_combate: int, **datos) -> bool:
-    """
-    Update combat fields.
-    
-    Args:
-        id_combate: Combat ID
-        **datos: Fields to update
-    
-    Returns:
-        True if successful, False otherwise
-    """
+    """Update combat fields."""
     columnas_validas = {
         "hp_atacante", "hp_defensor", "turno", "es_turno_atacante", "estado", "ganador"
     }
@@ -137,21 +115,22 @@ def actualizar_combate(id_combate: int, **datos) -> bool:
             print(f"[ERROR DB] Invalid column: {col}")
             return False
     
+    conn = _get_connection()
     try:
-        conn = _get_connection()
         cursor = conn.cursor()
-        cursor.execute("PRAGMA foreign_keys = ON;")
         
-        columnas = ", ".join([f"{col} = ?" for col in datos.keys()])
+        columnas = ", ".join([f"{col} = %s" for col in datos.keys()])
         valores = list(datos.values()) + [id_combate]
         
-        cursor.execute(f"UPDATE combates_tb SET {columnas} WHERE id_combate = ?", valores)
+        cursor.execute(f"UPDATE combates_tb SET {columnas} WHERE id_combate = %s", valores)
         conn.commit()
-        conn.close()
         return True
     except Exception as e:
+        conn.rollback()
         print(f"[ERROR DB] Error updating combat: {e}")
         return False
+    finally:
+        _put_connection(conn)
 
 
 def terminar_combate(id_combate: int, id_ganador: int) -> bool:
@@ -188,22 +167,13 @@ def terminar_combate(id_combate: int, id_ganador: int) -> bool:
 
 
 def get_combate_by_id(id_combate: int) -> dict:
-    """
-    Get combat by ID.
-    
-    Args:
-        id_combate: Combat ID
-    
-    Returns:
-        Combat dictionary or None if not found
-    """
+    """Get combat by ID."""
+    conn = _get_connection()
     try:
-        conn = _get_connection()
         cursor = conn.cursor()
         
-        cursor.execute("SELECT * FROM combates_tb WHERE id_combate = ?", (id_combate,))
+        cursor.execute("SELECT * FROM combates_tb WHERE id_combate = %s", (id_combate,))
         resultado = cursor.fetchone()
-        conn.close()
         
         if not resultado:
             return None
@@ -226,6 +196,8 @@ def get_combate_by_id(id_combate: int) -> dict:
     except Exception as e:
         print(f"[ERROR DB] Error getting combat by ID: {e}")
         return None
+    finally:
+        _put_connection(conn)
 
 
 # ==================== BATTLE COMMANDS ====================

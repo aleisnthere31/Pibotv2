@@ -6,7 +6,7 @@ from telegram import (
     InputMediaPhoto
 )
 from telegram.ext import ContextTypes
-from sqlgestion import (
+from src.database.database import (
     get_items,
     get_campo_item,
     get_id_item,
@@ -17,6 +17,7 @@ from sqlgestion import (
     update_cantidad,
     delete_item_user
     )
+from src.config import BOT_USERNAME
 from handlers.general import get_receptor
 from handlers.tienda import mostrar_item
 import os
@@ -58,8 +59,9 @@ def main_menu_markup():
     ])
 
 def abrir_privado_button():
+    bot_user = BOT_USERNAME or "PiBotBotBotBotBot"
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("💬 Abrir inventario en privado", url="https://t.me/PiBotBotBotBotBot?start=inventario")]
+        [InlineKeyboardButton("💬 Abrir inventario en privado", url=f"https://t.me/{bot_user}?start=inventario")]
     ])
 
 async def inventario(update: Update, context: ContextTypes.DEFAULT_TYPE, page: int = 1):

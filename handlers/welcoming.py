@@ -2,7 +2,7 @@ import asyncio
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from config import obtener_temas_por_comunidad
+from src.config import obtener_temas_por_comunidad
 
 # Diccionario global para almacenar los usuarios en proceso de verificación
 usuarios_en_verificacion = {}

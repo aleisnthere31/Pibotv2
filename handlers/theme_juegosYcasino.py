@@ -3,8 +3,8 @@ from datetime import datetime
 from telegram import Update
 from telegram.ext import ContextTypes
 from handlers.general import get_receptor
-from sqlgestion import normalizar_nombre,get_campo_usuario,insert_user,dar_puntos,quitar_puntos,update_perfil
-from config import obtener_temas_por_comunidad
+from src.database.database import normalizar_nombre,get_campo_usuario,insert_user,dar_puntos,quitar_puntos,update_perfil
+from src.config import obtener_temas_por_comunidad
 
 # === BASE DE DATOS EN MEMORIA ===
 active_bets = {}

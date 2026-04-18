@@ -25,8 +25,8 @@ from telegram.ext import (
 )
 
 # Local imports
-from src.config import BOT_TOKEN, DOMS, obtener_temas_por_comunidad, PUNISHMENT_FILE
-from src.database.database import create_database, create_tables, restart_all_combats
+from src.config import BOT_TOKEN, DOMS, obtener_temas_por_comunidad, PUNISHMENT_FILE, BOTMASTER_IDS
+from src.database.database import create_database, create_tables, restart_all_combats, seed_items, init_botmaster_roles
 
 # Handler imports - General commands
 from handlers.general import dar, ver, regalar, numero_azar, quitar
@@ -34,6 +34,7 @@ from handlers.starting_menu import start, menu_callback
 from handlers.tienda import tienda, tienda_callback
 from handlers.inventario import inventario, inventario_callback, usar
 from handlers.battles import lucha, ataque, aceptar_lucha
+from handlers.roles import asignar_rol, ver_rol
 
 # Handler imports - Games and rewards
 from handlers.theme_juegosYcasino import (
@@ -333,6 +334,12 @@ def main() -> None:
     print("[INIT] Creating tables...")
     create_tables()
     
+    print("[INIT] Seeding items catalog...")
+    seed_items()
+    
+    print("[INIT] Initializing BotMaster roles...")
+    init_botmaster_roles(BOTMASTER_IDS)
+    
     print("[INIT] Restarting active combats...")
     restart_all_combats()
     
@@ -366,6 +373,8 @@ def main() -> None:
     app.add_handler(CommandHandler("NumAzar", numero_azar), group=2)
     app.add_handler(CommandHandler("id", get_theme_id), group=2)
     app.add_handler(CommandHandler("saludar", saludar), group=2)
+    app.add_handler(CommandHandler("AsignarRol", asignar_rol), group=2)
+    app.add_handler(CommandHandler("MiRol", ver_rol), group=2)
 
     # Group 2.5: Battle/Combat system (refactored)
     app.add_handler(CommandHandler("lucha", lucha), group=2)

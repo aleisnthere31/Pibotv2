@@ -1,7 +1,8 @@
 import os
 from telegram import InputMediaPhoto, Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
-from sqlgestion import get_campo_usuario, get_campo_item, quitar_puntos,insert_user_item,get_cantidad_item_inventario,update_cantidad
+from src.database.database import get_campo_usuario, get_campo_item, quitar_puntos, insert_user_item, get_cantidad_item_inventario, update_cantidad
+from src.config import BOT_USERNAME
 from telegram.error import TelegramError
 
 # ==============================
@@ -12,7 +13,8 @@ async def tienda(update: Update, context: ContextTypes.DEFAULT_TYPE, from_menu=F
     chat = update.effective_chat
     # --- SI NO ES PRIVADO ---
     if chat.type != "private":
-        deep_link = f"https://t.me/PiBotBotBotBotBot?start=menu"
+        bot_user = BOT_USERNAME or context.bot.username
+        deep_link = f"https://t.me/{bot_user}?start=menu"
         keyboard = [[InlineKeyboardButton("✨ Abrir menú principal", url=deep_link)]]
 
         await update.message.reply_text(

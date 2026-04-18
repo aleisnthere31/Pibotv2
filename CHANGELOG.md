@@ -2,6 +2,47 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.0] - 2026-04-17
+
+### Database Migration: SQLite → PostgreSQL
+- **Replaced SQLite with PostgreSQL** for persistent storage on Railway
+- Connection pooling via `psycopg2.pool.SimpleConnectionPool(1, 10)`
+- All queries migrated from `?` placeholders to `%s` (PostgreSQL)
+- Uses `RETURNING` for insert IDs, `ON CONFLICT DO UPDATE` for upserts
+- `DATABASE_URL` environment variable (auto-provided by Railway)
+
+### Internal Role System
+- New `roles_tb` table with 3-tier roles: User (1), Admin (2), BotMaster (3)
+- `/AsignarRol @user [1|2|3]` — BotMaster-only command
+- `/MiRol` — view your current role
+- `BOTMASTER_IDS` env var bootstraps initial BotMaster roles at startup
+- Admin check now uses internal role system with fallback to config ADMINS list
+
+### Store Button Bug Fix
+- Replaced hardcoded `PiBotBotBotBotBot` deep link with dynamic `BOT_USERNAME` env var
+- Fixed in both `tienda.py` and `inventario.py`
+
+### Handler Refactoring
+- All handlers migrated from legacy imports (`sqlgestion`, `config`) to new modules (`src.database.database`, `src.config`)
+- New `handlers/roles.py` for role management commands
+- Fixed `handlers/battles.py`: `conn.close()` → `_put_connection(conn)` for pool compatibility
+
+### Database Initialization
+- `seed_items()` auto-populates item catalog (6 default items) on startup
+- `init_botmaster_roles()` ensures BotMaster roles are set on startup
+- `restart_all_combats()` cancels stale combat sessions
+
+### Repository Cleanup
+- Deleted legacy files: `sqlgestion.py`, `config.py` (exposed token!), `sql_create_items.py`, `verify_dependencies.py`, `test_imports.py`, `LOCAL_TESTING_GUIDE.py`
+- Deleted outdated docs: `SETUP_STATUS.md`, `REFACTORING_SUMMARY.md`, `FPS_MS_DEPLOYMENT.md`, `GITHUB_SETUP.md`, `docs/DEPLOYMENT.md`, `docs/ARCHITECTURE.md`, `docs/CONFIGURATION.md`, `docs/DEVELOPMENT.md`
+- Updated `requirements.txt`: added `psycopg2-binary==2.9.10`, removed unused packages, fixed UTF-16 encoding
+- Created `Agents.md` — complete technical documentation for AI agents
+
+### Environment Variables (New)
+- `DATABASE_URL` — PostgreSQL connection string
+- `BOT_USERNAME` — bot's Telegram username for deep links
+- `BOTMASTER_IDS` — comma-separated user IDs for BotMaster role
+
 ## [2.0.0] - 2026-03-13
 
 ### Major Refactoring & Reorganization

@@ -5,6 +5,7 @@ This module handles all configuration settings including:
 - Bot token and API credentials
 - Community IDs and topics
 - Admin and DOM (dominant) user lists
+- Database connection URL
 - Environment-based configuration
 
 All sensitive data should be loaded from environment variables.
@@ -24,6 +25,22 @@ if not BOT_TOKEN:
         "ERROR: BOT_TOKEN environment variable is not set. "
         "Please create a .env file with your bot token."
     )
+
+# Database Configuration (PostgreSQL on Railway)
+DATABASE_URL = os.getenv("DATABASE_URL", "")
+
+if not DATABASE_URL:
+    raise ValueError(
+        "ERROR: DATABASE_URL environment variable is not set. "
+        "Railway provides this automatically when you add a PostgreSQL plugin."
+    )
+
+# Bot username for deep links (without @)
+BOT_USERNAME = os.getenv("BOT_USERNAME", "")
+
+# BotMaster IDs (comma-separated) — these users get role=3 at startup
+_botmaster_raw = os.getenv("BOTMASTER_IDS", "")
+BOTMASTER_IDS = [int(x.strip()) for x in _botmaster_raw.split(",") if x.strip()]
 
 # Community configurations with their topic IDs
 COMUNIDADES = [
@@ -109,7 +126,6 @@ DOMS = {
 
 # Application settings
 PUNISHMENT_FILE = "castigados.json"
-DATABASE_FILE = os.getenv("DATABASE_FILE", "usuarios.db")
 
 
 def obtener_temas_por_comunidad(community_id: int) -> dict:

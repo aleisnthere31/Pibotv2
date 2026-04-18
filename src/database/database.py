@@ -1,327 +1,392 @@
-"""
+﻿"""
 Database management module for PiBot.
 
-This module handles all SQLite database operations including:
+This module handles all PostgreSQL database operations including:
 - User and profile management
 - Item catalog and inventory management
 - Balance and points operations
+- Role management (User=1, Admin=2, BotMaster=3)
+- Combat/battle management
 - Text normalization and cleaning utilities
+
+Uses PostgreSQL via psycopg2 for persistent storage on Railway.
 """
 
 import re
-import sqlite3 as sql
 import unicodedata
 from typing import Optional, Dict, List, Any
 
-from src.config import DATABASE_FILE
+import psycopg2
+from psycopg2 import pool as pg_pool
+
+from src.config import DATABASE_URL
+
+# ==================== CONNECTION POOL ====================
+
+_connection_pool = None
 
 
-def create_database() -> None:
-    """Initialize the SQLite database file."""
-    conn = sql.connect(DATABASE_FILE)
-    conn.commit()
-    conn.close()
+def _init_pool():
+    """Initialize the PostgreSQL connection pool."""
+    global _connection_pool
+    if _connection_pool is None:
+        _connection_pool = pg_pool.SimpleConnectionPool(1, 10, DATABASE_URL)
 
 
-def create_tables() -> None:
+def _get_connection():
+    """Get a connection from the pool."""
+    _init_pool()
+    return _connection_pool.getconn()
+
+
+def _put_connection(conn):
+    """Return a connection to the pool."""
+    if _connection_pool:
+        _connection_pool.putconn(conn)
+
+
+# ==================== INITIALIZATION ====================
+
+def create_database():
+    """No-op for PostgreSQL â€” the database is provisioned by Railway."""
+    pass
+
+
+def create_tables():
     """
     Create all necessary database tables with proper schema and constraints.
-    
+
     Tables created:
     - usuarios_tb: User accounts and balance
     - items_tb: Item catalog
     - items_usuarios_tb: User inventory (many-to-many relationship)
     - perfiles_tb: User profile information
+    - combates_tb: Combat/battle records
+    - roles_tb: Internal role system
     """
-    conn = sql.connect(DATABASE_FILE)
-    cursor = conn.cursor()
-    cursor.execute("PRAGMA foreign_keys = ON;")
-    
-    # Users table: Stores balance information
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS usuarios_tb (
-            id_user INTEGER PRIMARY KEY,
-            saldo INTEGER DEFAULT 0
-        );
-    """)
-    
-    # Items catalog table: Available items in the shop
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS items_tb (
-            id_item INTEGER PRIMARY KEY AUTOINCREMENT,
-            nombre TEXT NOT NULL UNIQUE,
-            precio INTEGER NOT NULL,
-            imagen TEXT NOT NULL,
-            descripcion TEXT,
-            mensaje TEXT
-        );
-    """)
-    
-    # User inventory table: Many-to-many relationship between users and items
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS items_usuarios_tb (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            id_user INTEGER NOT NULL,
-            id_item INTEGER NOT NULL,
-            cantidad INTEGER NOT NULL DEFAULT 1,
-            FOREIGN KEY (id_user) REFERENCES usuarios_tb(id_user) ON DELETE CASCADE,
-            FOREIGN KEY (id_item) REFERENCES items_tb(id_item) ON DELETE CASCADE,
-            UNIQUE(id_user, id_item)
-        );
-    """)
-    
-    # Optimize inventory lookups with indexes
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_usuario ON items_usuarios_tb(id_user);")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_item ON items_usuarios_tb(id_item);")
-    
-    # User profiles table: Additional user information
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS perfiles_tb (
-            id_user INTEGER PRIMARY KEY,
-            username TEXT UNIQUE,
-            nombre TEXT NOT NULL,
-            rol TEXT,
-            orientacion_sexual TEXT,
-            genero TEXT,
-            ubicacion TEXT,
-            edad INTEGER,
-            FOREIGN KEY (id_user) REFERENCES usuarios_tb(id_user) ON DELETE CASCADE
-        );
-    """)
-    
-    # Combat/Battle table: Active battles between users
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS combates_tb (
-            id_combate INTEGER PRIMARY KEY AUTOINCREMENT,
-            id_atacante INTEGER NOT NULL,
-            id_defensor INTEGER NOT NULL,
-            username_atacante TEXT NOT NULL,
-            username_defensor TEXT NOT NULL,
-            apuesta INTEGER NOT NULL DEFAULT 0,
-            hp_atacante INTEGER NOT NULL DEFAULT 20,
-            hp_defensor INTEGER NOT NULL DEFAULT 20,
-            turno INTEGER NOT NULL DEFAULT 1,
-            es_turno_atacante INTEGER NOT NULL DEFAULT 1,
-            estado TEXT NOT NULL DEFAULT 'activo',
-            ganador INTEGER,
-            fecha_inicio DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (id_atacante) REFERENCES usuarios_tb(id_user),
-            FOREIGN KEY (id_defensor) REFERENCES usuarios_tb(id_user),
-            FOREIGN KEY (ganador) REFERENCES usuarios_tb(id_user)
-        );
-    """)
-    
-    # Create indexes for faster combat lookups
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_combate_atacante ON combates_tb(id_atacante);")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_combate_defensor ON combates_tb(id_defensor);")
-    
-    conn.commit()
-    conn.close()
+    conn = _get_connection()
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS usuarios_tb (
+                id_user BIGINT PRIMARY KEY,
+                saldo INTEGER DEFAULT 0
+            );
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS items_tb (
+                id_item SERIAL PRIMARY KEY,
+                nombre TEXT NOT NULL UNIQUE,
+                precio INTEGER NOT NULL,
+                imagen TEXT NOT NULL,
+                descripcion TEXT,
+                mensaje TEXT
+            );
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS items_usuarios_tb (
+                id SERIAL PRIMARY KEY,
+                id_user BIGINT NOT NULL REFERENCES usuarios_tb(id_user) ON DELETE CASCADE,
+                id_item INTEGER NOT NULL REFERENCES items_tb(id_item) ON DELETE CASCADE,
+                cantidad INTEGER NOT NULL DEFAULT 1,
+                UNIQUE(id_user, id_item)
+            );
+        """)
+
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_usuario ON items_usuarios_tb(id_user);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_item ON items_usuarios_tb(id_item);")
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS perfiles_tb (
+                id_user BIGINT PRIMARY KEY REFERENCES usuarios_tb(id_user) ON DELETE CASCADE,
+                username TEXT UNIQUE,
+                nombre TEXT NOT NULL,
+                rol TEXT,
+                orientacion_sexual TEXT,
+                genero TEXT,
+                ubicacion TEXT,
+                edad INTEGER
+            );
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS combates_tb (
+                id_combate SERIAL PRIMARY KEY,
+                id_atacante BIGINT NOT NULL REFERENCES usuarios_tb(id_user),
+                id_defensor BIGINT NOT NULL REFERENCES usuarios_tb(id_user),
+                username_atacante TEXT NOT NULL,
+                username_defensor TEXT NOT NULL,
+                apuesta INTEGER NOT NULL DEFAULT 0,
+                hp_atacante INTEGER NOT NULL DEFAULT 20,
+                hp_defensor INTEGER NOT NULL DEFAULT 20,
+                turno INTEGER NOT NULL DEFAULT 1,
+                es_turno_atacante INTEGER NOT NULL DEFAULT 1,
+                estado TEXT NOT NULL DEFAULT 'activo',
+                ganador BIGINT REFERENCES usuarios_tb(id_user),
+                fecha_inicio TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_combate_atacante ON combates_tb(id_atacante);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_combate_defensor ON combates_tb(id_defensor);")
+
+        # Internal role system
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS roles_tb (
+                id_user BIGINT PRIMARY KEY REFERENCES usuarios_tb(id_user) ON DELETE CASCADE,
+                role INTEGER NOT NULL DEFAULT 1 CHECK (role IN (1, 2, 3))
+            );
+        """)
+
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f"[ERROR DB] Failed to create tables: {e}")
+    finally:
+        _put_connection(conn)
 
 
-def _get_connection() -> sql.Connection:
+def seed_items():
     """
-    Get a database connection.
-    
-    Returns:
-        SQLite connection object
+    Seed the item catalog with default items if not already present.
+    Idempotent â€” skips items that already exist.
     """
-    return sql.connect(DATABASE_FILE)
+    items = [
+        {
+            "nombre": "Collar",
+            "precio": 100,
+            "imagen": "img_items/collar.png",
+            "descripcion": "Un bonito collar para poner a alguien especial",
+            "mensaje": "ðŸ˜ˆ {sender_username} le ha puesto un collar muy bonito a {receptor_username} ðŸ˜\n Â¡QuÃ© envidiaaa!",
+        },
+        {
+            "nombre": "Latigo",
+            "precio": 150,
+            "imagen": "img_items/latigo.png",
+            "descripcion": "Un lÃ¡tigo para los que se portan mal",
+            "mensaje": "ðŸ˜± {sender_username} ha azotado con un lÃ¡tigo a {receptor_username} \n ... Eso va a dejar marca ðŸ«¦",
+        },
+        {
+            "nombre": "Fusta",
+            "precio": 120,
+            "imagen": "img_items/fusta.png",
+            "descripcion": "Fusta de adiestramiento profesional",
+            "mensaje": "ðŸ¤© {sender_username} estÃ¡ adiestrando a {receptor_username} con su fusta favorita ðŸ˜ˆ\n Â¿PorquÃ© parece que {receptor_username} lo disfruta?... ðŸ«¦",
+        },
+        {
+            "nombre": "Galleta",
+            "precio": 50,
+            "imagen": "img_items/galleta.png",
+            "descripcion": "Una galleta para premiar el buen comportamiento",
+            "mensaje": "â¤ {sender_username} le ha regalado a {receptor_username} una galleta ðŸª\n Parece que se ha portado muy bien ðŸ¤¤",
+        },
+        {
+            "nombre": "Bola mordaza",
+            "precio": 200,
+            "imagen": "img_items/bola_mordaza.png",
+            "descripcion": "Para cuando alguien habla demasiado",
+            "mensaje": "ðŸ¤ {sender_username} Le ha puesto una bola mordaza a {receptor_username}\n Que bien te ves sin poder hablar ðŸ˜–",
+        },
+        {
+            "nombre": "Sorpresa",
+            "precio": 300,
+            "imagen": "img_items/sorpresa.jpg",
+            "descripcion": "Un artÃ­culo misterioso... Â¿te atreves?",
+            "mensaje": "ðŸ˜ˆ {sender_username} ha decidido modelarle algo de su lencerÃ­a sexy a {receptor_username}\n Le queda muy bien, aunque no esperaba que {sender_username} hiciera eso frente a todos ðŸ‘ðŸ‘„ðŸ‘",
+        },
+    ]
+
+    conn = _get_connection()
+    try:
+        cursor = conn.cursor()
+        for item in items:
+            cursor.execute("SELECT 1 FROM items_tb WHERE nombre = %s", (item["nombre"],))
+            if cursor.fetchone() is None:
+                cursor.execute(
+                    "INSERT INTO items_tb (nombre, precio, imagen, descripcion, mensaje) VALUES (%s, %s, %s, %s, %s)",
+                    (item["nombre"], item["precio"], item["imagen"], item["descripcion"], item["mensaje"]),
+                )
+                print(f"[SEED] Item '{item['nombre']}' inserted.")
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f"[ERROR DB] Failed to seed items: {e}")
+    finally:
+        _put_connection(conn)
+
+
+def init_botmaster_roles(botmaster_ids: list):
+    """
+    Ensure BotMaster users have role=3 in the database.
+    Called at startup to bootstrap the role system.
+    """
+    conn = _get_connection()
+    try:
+        cursor = conn.cursor()
+        for uid in botmaster_ids:
+            # Ensure user exists in usuarios_tb
+            cursor.execute("SELECT 1 FROM usuarios_tb WHERE id_user = %s", (uid,))
+            if cursor.fetchone() is None:
+                cursor.execute("INSERT INTO usuarios_tb (id_user, saldo) VALUES (%s, 0)", (uid,))
+                cursor.execute(
+                    "INSERT INTO perfiles_tb (id_user, username, nombre) VALUES (%s, %s, %s)",
+                    (uid, None, "BotMaster"),
+                )
+            # Upsert role
+            cursor.execute(
+                "INSERT INTO roles_tb (id_user, role) VALUES (%s, 3) "
+                "ON CONFLICT (id_user) DO UPDATE SET role = 3",
+                (uid,),
+            )
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        print(f"[ERROR DB] Failed to init botmaster roles: {e}")
+    finally:
+        _put_connection(conn)
 
 
 # ==================== USER OPERATIONS ====================
 
 def insert_user(id_user: int, saldo: int = 0, username: Optional[str] = None,
                 nombre: Optional[str] = None) -> bool:
-    """
-    Create a new user account and profile.
-    
-    Args:
-        id_user: Unique Telegram user ID
-        saldo: Initial balance (PiPesos)
-        username: Telegram username
-        nombre: User's display name
-    
-    Returns:
-        True if successful, False otherwise
-    """
+    """Create a new user account, profile, and default role."""
     if not id_user:
         print("[ERROR DB] Cannot insert user without valid ID")
         return False
-    
+
     if not nombre or nombre.strip() == "":
         print("[ERROR DB] User must have at least a name")
         return False
-    
+
+    conn = _get_connection()
     try:
-        conn = _get_connection()
         cursor = conn.cursor()
-        cursor.execute("PRAGMA foreign_keys = ON;")
-        
-        # Insert into users table
+
         cursor.execute(
-            "INSERT INTO usuarios_tb (id_user, saldo) VALUES (?, ?);",
-            (id_user, saldo)
+            "INSERT INTO usuarios_tb (id_user, saldo) VALUES (%s, %s)",
+            (id_user, saldo),
         )
-        
-        # Insert into profiles table
         cursor.execute(
-            "INSERT INTO perfiles_tb (id_user, username, nombre) VALUES (?, ?, ?);",
-            (id_user, username, nombre)
+            "INSERT INTO perfiles_tb (id_user, username, nombre) VALUES (%s, %s, %s)",
+            (id_user, username, nombre),
         )
-        
+        # Default role = 1 (User)
+        cursor.execute(
+            "INSERT INTO roles_tb (id_user, role) VALUES (%s, 1)",
+            (id_user,),
+        )
+
         conn.commit()
-        conn.close()
         return True
     except Exception as e:
+        conn.rollback()
         print(f"[ERROR DB] Failed to insert user: {e}")
         return False
+    finally:
+        _put_connection(conn)
 
 
 def get_campo_usuario(id_user: int, columna: str) -> Optional[Any]:
-    """
-    Retrieve a specific field from a user's profile or balance.
-    
-    Args:
-        id_user: User's Telegram ID
-        columna: Column name to retrieve
-    
-    Returns:
-        Field value or None if not found
-    """
+    """Retrieve a specific field from a user's profile or balance."""
     columnas_validas = {
         "nombre", "username", "rol", "orientacion_sexual",
-        "genero", "ubicacion", "edad", "saldo", "id_user"
+        "genero", "ubicacion", "edad", "saldo", "id_user",
     }
-    
+
     if columna not in columnas_validas:
         print(f"[ERROR DB] Invalid column: {columna}")
         return None
-    
-    tabla = "perfiles_tb" if columna != "saldo" else "usuarios_tb"
-    
+
+    tabla = "usuarios_tb" if columna == "saldo" else "perfiles_tb"
+
+    conn = _get_connection()
     try:
-        conn = _get_connection()
         cursor = conn.cursor()
-        cursor.execute(f"SELECT {columna} FROM {tabla} WHERE id_user = ?", (id_user,))
+        cursor.execute(f"SELECT {columna} FROM {tabla} WHERE id_user = %s", (id_user,))
         resultado = cursor.fetchone()
-        conn.close()
-        
         return resultado[0] if resultado else None
     except Exception as e:
         print(f"[ERROR DB] Error retrieving user field: {e}")
         return None
+    finally:
+        _put_connection(conn)
 
 
 def update_perfil(id_user: int, **datos) -> bool:
-    """
-    Update user profile fields.
-    
-    Args:
-        id_user: User's Telegram ID
-        **datos: Column-value pairs to update
-    
-    Returns:
-        True if successful, False otherwise
-    """
+    """Update user profile fields."""
     columnas_validas = {
         "nombre", "username", "rol", "orientacion_sexual",
-        "genero", "ubicacion", "edad"
+        "genero", "ubicacion", "edad",
     }
-    
+
     if not datos:
         print("[ERROR DB] No data provided for update")
         return False
-    
-    # Validate all columns
+
     for col in datos.keys():
         if col not in columnas_validas:
             print(f"[ERROR DB] Invalid column: {col}")
             return False
-    
+
+    conn = _get_connection()
     try:
-        conn = _get_connection()
         cursor = conn.cursor()
-        cursor.execute("PRAGMA foreign_keys = ON;")
-        
-        columnas = ", ".join([f"{col} = ?" for col in datos.keys()])
+
+        columnas = ", ".join([f"{col} = %s" for col in datos.keys()])
         valores = list(datos.values()) + [id_user]
-        
-        cursor.execute(f"UPDATE perfiles_tb SET {columnas} WHERE id_user = ?", valores)
+
+        cursor.execute(f"UPDATE perfiles_tb SET {columnas} WHERE id_user = %s", valores)
         conn.commit()
-        conn.close()
         return True
     except Exception as e:
+        conn.rollback()
         print(f"[ERROR DB] Error updating profile: {e}")
         return False
+    finally:
+        _put_connection(conn)
 
 
 # ==================== BALANCE OPERATIONS ====================
 
 def update_saldo(id_user: int, saldo: int) -> bool:
-    """
-    Set user's balance to a specific value.
-    
-    Args:
-        id_user: User's Telegram ID
-        saldo: New balance value
-    
-    Returns:
-        True if successful, False otherwise
-    """
+    """Set user's balance to a specific value."""
     if saldo < 0:
         print("[ERROR DB] Balance cannot be negative")
         return False
-    
+
+    conn = _get_connection()
     try:
-        conn = _get_connection()
         cursor = conn.cursor()
-        cursor.execute("PRAGMA foreign_keys = ON;")
-        
         cursor.execute(
-            "UPDATE usuarios_tb SET saldo = ? WHERE id_user = ?",
-            (saldo, id_user)
+            "UPDATE usuarios_tb SET saldo = %s WHERE id_user = %s",
+            (saldo, id_user),
         )
-        
         if cursor.rowcount == 0:
             print("[ERROR DB] User not found")
-            conn.close()
+            conn.rollback()
             return False
-        
         conn.commit()
-        conn.close()
         return True
     except Exception as e:
+        conn.rollback()
         print(f"[ERROR DB] Error updating balance: {e}")
         return False
+    finally:
+        _put_connection(conn)
 
 
 def dar_puntos(id_user: int, cantidad: int) -> bool:
-    """
-    Add points to a user's balance.
-    
-    Args:
-        id_user: User's Telegram ID
-        cantidad: Amount to add
-    
-    Returns:
-        True if successful, False otherwise
-    """
+    """Add points to a user's balance."""
     saldo_actual = get_campo_usuario(id_user, "saldo") or 0
     return update_saldo(id_user, saldo_actual + cantidad)
 
 
 def quitar_puntos(id_user: int, cantidad: int) -> bool:
-    """
-    Remove points from a user's balance.
-    
-    Args:
-        id_user: User's Telegram ID
-        cantidad: Amount to remove
-    
-    Returns:
-        True if successful, False otherwise
-    """
+    """Remove points from a user's balance."""
     saldo_actual = get_campo_usuario(id_user, "saldo") or 0
     nuevo_saldo = max(0, saldo_actual - cantidad)
     return update_saldo(id_user, nuevo_saldo)
@@ -331,429 +396,379 @@ def quitar_puntos(id_user: int, cantidad: int) -> bool:
 
 def insert_item(nombre: str, precio: int, ruta_imagen: str,
                 descripcion: Optional[str] = None, mensaje: Optional[str] = None) -> bool:
-    """
-    Add a new item to the catalog.
-    
-    Args:
-        nombre: Item name
-        precio: Item price in PiPesos
-        ruta_imagen: Path to item image
-        descripcion: Optional item description
-        mensaje: Optional message sent when using item
-    
-    Returns:
-        True if successful, False otherwise
-    """
+    """Add a new item to the catalog."""
+    conn = _get_connection()
     try:
-        conn = _get_connection()
         cursor = conn.cursor()
-        
         cursor.execute(
-            "INSERT INTO items_tb (nombre, precio, imagen, descripcion, mensaje) VALUES (?, ?, ?, ?, ?)",
-            (nombre, precio, ruta_imagen, descripcion, mensaje)
+            "INSERT INTO items_tb (nombre, precio, imagen, descripcion, mensaje) VALUES (%s, %s, %s, %s, %s)",
+            (nombre, precio, ruta_imagen, descripcion, mensaje),
         )
-        
         conn.commit()
-        conn.close()
         return True
     except Exception as e:
+        conn.rollback()
         print(f"[ERROR DB] Failed to insert item: {e}")
         return False
+    finally:
+        _put_connection(conn)
 
 
 def get_campo_item(id_item: int, columna: str) -> Optional[Any]:
-    """
-    Retrieve a specific field from an item.
-    
-    Args:
-        id_item: Item ID
-        columna: Column name to retrieve
-    
-    Returns:
-        Field value or None if not found
-    """
+    """Retrieve a specific field from an item."""
     columnas_validas = {"id_item", "nombre", "precio", "imagen", "descripcion", "mensaje"}
-    
+
     if columna not in columnas_validas:
         print(f"[ERROR DB] Invalid column: {columna}")
         return None
-    
+
+    conn = _get_connection()
     try:
-        conn = _get_connection()
         cursor = conn.cursor()
-        cursor.execute(f"SELECT {columna} FROM items_tb WHERE id_item = ?", (id_item,))
+        cursor.execute(f"SELECT {columna} FROM items_tb WHERE id_item = %s", (id_item,))
         resultado = cursor.fetchone()
-        conn.close()
-        
         return resultado[0] if resultado else None
     except Exception as e:
         print(f"[ERROR DB] Error retrieving item: {e}")
         return None
+    finally:
+        _put_connection(conn)
 
 
 def update_item(id_item: int, **datos) -> bool:
-    """
-    Update item fields.
-    
-    Args:
-        id_item: Item ID
-        **datos: Column-value pairs to update
-    
-    Returns:
-        True if successful, False otherwise
-    """
+    """Update item fields."""
     columnas_validas = {"nombre", "precio", "imagen", "descripcion", "mensaje"}
-    
+
     if not datos:
-        print("[ERROR DB] No data provided for update")
         return False
-    
+
     for col in datos.keys():
         if col not in columnas_validas:
             print(f"[ERROR DB] Invalid column: {col}")
             return False
-    
+
+    conn = _get_connection()
     try:
-        conn = _get_connection()
         cursor = conn.cursor()
-        cursor.execute("PRAGMA foreign_keys = ON;")
-        
-        columnas = ", ".join([f"{col} = ?" for col in datos.keys()])
+        columnas = ", ".join([f"{col} = %s" for col in datos.keys()])
         valores = list(datos.values()) + [id_item]
-        
-        cursor.execute(f"UPDATE items_tb SET {columnas} WHERE id_item = ?", valores)
-        
+        cursor.execute(f"UPDATE items_tb SET {columnas} WHERE id_item = %s", valores)
         if cursor.rowcount == 0:
             print("[ERROR DB] Item not found")
+            conn.rollback()
             return False
-        
         conn.commit()
-        conn.close()
         return True
     except Exception as e:
+        conn.rollback()
         print(f"[ERROR DB] Error updating item: {e}")
         return False
+    finally:
+        _put_connection(conn)
 
 
 def get_id_item(nombre: str) -> Optional[int]:
-    """
-    Get an item ID by its normalized name.
-    
-    Args:
-        nombre: Item name to search for
-    
-    Returns:
-        Item ID or None if not found
-    """
-    nome_normalizado = normalizar_nombre(nome).capitalize()
-    
+    """Get an item ID by its normalized name."""
+    nombre_normalizado = to_plain_text(nombre, True).capitalize()
+
+    conn = _get_connection()
     try:
-        conn = _get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT id_item FROM items_tb WHERE nome = ?", (nome_normalizado,))
+        cursor.execute("SELECT id_item FROM items_tb WHERE nombre = %s", (nombre_normalizado,))
         resultado = cursor.fetchone()
-        conn.close()
-        
         return resultado[0] if resultado else None
     except Exception as e:
         print(f"[ERROR DB] Error getting item ID: {e}")
         return None
+    finally:
+        _put_connection(conn)
+
+
+def delete_item(id_item: int) -> bool:
+    """Delete an item from catalog (cascading delete)."""
+    conn = _get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM items_tb WHERE id_item = %s", (id_item,))
+        success = cursor.rowcount > 0
+        conn.commit()
+        return success
+    except Exception as e:
+        conn.rollback()
+        print(f"[ERROR DB] Error deleting item: {e}")
+        return False
+    finally:
+        _put_connection(conn)
 
 
 # ==================== INVENTORY OPERATIONS ====================
 
 def insert_user_item(id_user: int, id_item: int, cantidad: int = 1) -> bool:
-    """
-    Add an item to user's inventory or increase quantity.
-    
-    Args:
-        id_user: User's Telegram ID
-        id_item: Item ID
-        cantidad: Quantity to add
-    
-    Returns:
-        True if successful, False otherwise
-    """
+    """Add an item to user's inventory or increase quantity."""
+    conn = _get_connection()
     try:
-        conn = _get_connection()
         cursor = conn.cursor()
-        
-        # Check if item already in inventory
+
         cursor.execute(
-            "SELECT cantidad FROM items_usuarios_tb WHERE id_user = ? AND id_item = ?",
-            (id_user, id_item)
+            "SELECT cantidad FROM items_usuarios_tb WHERE id_user = %s AND id_item = %s",
+            (id_user, id_item),
         )
         resultado = cursor.fetchone()
-        
+
         if resultado:
-            # Update quantity
-            nova_cantidad = resultado[0] + cantidad
+            nueva_cantidad = resultado[0] + cantidad
             cursor.execute(
-                "UPDATE items_usuarios_tb SET cantidad = ? WHERE id_user = ? AND id_item = ?",
-                (nova_cantidad, id_user, id_item)
+                "UPDATE items_usuarios_tb SET cantidad = %s WHERE id_user = %s AND id_item = %s",
+                (nueva_cantidad, id_user, id_item),
             )
         else:
-            # Insert new item
             cursor.execute(
-                "INSERT INTO items_usuarios_tb (id_user, id_item, quantidade) VALUES (?, ?, ?)",
-                (id_user, id_item, cantidad)
+                "INSERT INTO items_usuarios_tb (id_user, id_item, cantidad) VALUES (%s, %s, %s)",
+                (id_user, id_item, cantidad),
             )
-        
+
         conn.commit()
-        conn.close()
         return True
     except Exception as e:
+        conn.rollback()
         print(f"[ERROR DB] Error adding item to inventory: {e}")
         return False
+    finally:
+        _put_connection(conn)
 
 
 def get_items(id_user: int) -> List[Dict[str, Any]]:
-    """
-    Get all items in a user's inventory.
-    
-    Args:
-        id_user: User's Telegram ID
-    
-    Returns:
-        List of dictionaries with item information
-    """
+    """Get all items in a user's inventory."""
+    conn = _get_connection()
     try:
-        conn = _get_connection()
         cursor = conn.cursor()
-        cursor.execute("PRAGMA foreign_keys = ON")
-        
         cursor.execute("""
             SELECT
                 items_tb.id_item,
-                items_tb.nome,
+                items_tb.nombre,
                 items_tb.precio,
                 items_tb.imagen,
                 items_usuarios_tb.cantidad
             FROM items_usuarios_tb
             INNER JOIN items_tb ON items_tb.id_item = items_usuarios_tb.id_item
-            WHERE items_usuarios_tb.id_user = ?
-            ORDER BY items_tb.nome
+            WHERE items_usuarios_tb.id_user = %s
+            ORDER BY items_tb.nombre
         """, (id_user,))
-        
+
         filas = cursor.fetchall()
-        conn.close()
-        
-        items = [
+        return [
             {
                 "id_item": fila[0],
-                "nome": fila[1],
+                "nombre": fila[1],
                 "precio": fila[2],
                 "imagen": fila[3],
-                "cantidad": fila[4]
+                "cantidad": fila[4],
             }
             for fila in filas
         ]
-        
-        return items
     except Exception as e:
         print(f"[ERROR DB] Error retrieving items: {e}")
         return []
+    finally:
+        _put_connection(conn)
 
 
 def get_cantidad_item_inventario(id_user: int, id_item: int) -> int:
-    """
-    Get the quantity of a specific item in user's inventory.
-    
-    Args:
-        id_user: User's Telegram ID
-        id_item: Item ID
-    
-    Returns:
-        Quantity (0 if item not in inventory)
-    """
+    """Get the quantity of a specific item in user's inventory."""
+    conn = _get_connection()
     try:
-        conn = _get_connection()
         cursor = conn.cursor()
-        cursor.execute("PRAGMA foreign_keys = ON;")
-        
         cursor.execute(
-            "SELECT cantidad FROM items_usuarios_tb WHERE id_item = ? AND id_user = ?",
-            (id_item, id_user)
+            "SELECT cantidad FROM items_usuarios_tb WHERE id_item = %s AND id_user = %s",
+            (id_item, id_user),
         )
         resultado = cursor.fetchone()
-        conn.close()
-        
         return resultado[0] if resultado else 0
     except Exception as e:
         print(f"[ERROR DB] Error getting item quantity: {e}")
         return 0
+    finally:
+        _put_connection(conn)
 
 
 def update_cantidad(user_id: int, item_id: int, cantidad: int) -> bool:
-    """
-    Update the quantity of an item in user's inventory.
-    
-    Args:
-        user_id: User's Telegram ID
-        item_id: Item ID
-        cantidad: New quantity
-    
-    Returns:
-        True if successful, False otherwise
-    """
+    """Update the quantity of an item in user's inventory."""
     if cantidad < 0:
         print("[ERROR DB] Quantity cannot be negative")
         return False
-    
+
+    conn = _get_connection()
     try:
-        conn = _get_connection()
         cursor = conn.cursor()
-        cursor.execute("PRAGMA foreign_keys = ON;")
-        
         cursor.execute(
-            "UPDATE items_usuarios_tb SET cantidad = ? WHERE id_user = ? AND id_item = ?",
-            (cantidad, user_id, item_id)
+            "UPDATE items_usuarios_tb SET cantidad = %s WHERE id_user = %s AND id_item = %s",
+            (cantidad, user_id, item_id),
         )
-        
         if cursor.rowcount == 0:
             print("[ERROR DB] Item not found in user inventory")
-            conn.close()
+            conn.rollback()
             return False
-        
         conn.commit()
-        conn.close()
         return True
     except Exception as e:
+        conn.rollback()
         print(f"[ERROR DB] Error updating quantity: {e}")
         return False
+    finally:
+        _put_connection(conn)
 
 
 def delete_item_user(id_user: int, id_item: int) -> bool:
-    """
-    Remove an item from user's inventory.
-    
-    Args:
-        id_user: User's Telegram ID
-        id_item: Item ID
-    
-    Returns:
-        True if successful, False otherwise
-    """
+    """Remove an item from user's inventory."""
+    conn = _get_connection()
     try:
-        conn = _get_connection()
         cursor = conn.cursor()
-        cursor.execute("PRAGMA foreign_keys = ON;")
-        
         cursor.execute(
-            "DELETE FROM items_usuarios_tb WHERE id_user = ? AND id_item = ?",
-            (id_user, id_item)
+            "DELETE FROM items_usuarios_tb WHERE id_user = %s AND id_item = %s",
+            (id_user, id_item),
         )
-        
         if cursor.rowcount == 0:
             print("[ERROR DB] Item not found in user inventory")
-            conn.close()
+            conn.rollback()
             return False
-        
         conn.commit()
-        conn.close()
         return True
     except Exception as e:
+        conn.rollback()
         print(f"[ERROR DB] Error deleting item: {e}")
         return False
+    finally:
+        _put_connection(conn)
 
 
-# ==================== DELETE OPERATIONS ====================
+# ==================== USER DELETE ====================
 
 def delete_user(id_user: int) -> bool:
-    """
-    Delete a user and all associated data (cascading delete).
-    
-    Args:
-        id_user: User's Telegram ID
-    
-    Returns:
-        True if user was deleted, False otherwise
-    """
+    """Delete a user and all associated data (cascading delete)."""
+    conn = _get_connection()
     try:
-        conn = _get_connection()
         cursor = conn.cursor()
-        cursor.execute("PRAGMA foreign_keys = ON;")
-        
-        cursor.execute("DELETE FROM usuarios_tb WHERE id_user = ?", (id_user,))
-        sucesso = cursor.rowcount > 0
-        
+        cursor.execute("DELETE FROM usuarios_tb WHERE id_user = %s", (id_user,))
+        success = cursor.rowcount > 0
         conn.commit()
-        conn.close()
-        return sucesso
+        return success
     except Exception as e:
+        conn.rollback()
         print(f"[ERROR DB] Error deleting user: {e}")
         return False
+    finally:
+        _put_connection(conn)
 
 
-def delete_item(id_item: int) -> bool:
-    """
-    Delete an item from catalog (cascading delete).
-    
-    Args:
-        id_item: Item ID
-    
-    Returns:
-        True if item was deleted, False otherwise
-    """
-    try:
-        conn = _get_connection()
-        cursor = conn.cursor()
-        cursor.execute("PRAGMA foreign_keys = ON;")
-        
-        cursor.execute("DELETE FROM items_tb WHERE id_item = ?", (id_item,))
-        sucesso = cursor.rowcount > 0
-        
-        conn.commit()
-        conn.close()
-        return sucesso
-    except Exception as e:
-        print(f"[ERROR DB] Error deleting item: {e}")
-        return False
-
-
-# ==================== UTILITY FUNCTIONS ====================
+# ==================== USER LOOKUP ====================
 
 def get_id_user(username: str) -> Optional[int]:
-    """
-    Get user ID by username.
-    
-    Args:
-        username: Telegram username (without @)
-    
-    Returns:
-        User ID or None if not found
-    """
+    """Get user ID by username."""
+    conn = _get_connection()
     try:
-        conn = _get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id_user FROM perfiles_tb WHERE username = ?",
-            (username,)
+            "SELECT id_user FROM perfiles_tb WHERE username = %s",
+            (username,),
         )
         resultado = cursor.fetchone()
-        conn.close()
-        
         return resultado[0] if resultado else None
     except Exception as e:
         print(f"[ERROR DB] Error getting user ID: {e}")
         return None
+    finally:
+        _put_connection(conn)
 
+
+# ==================== ROLE OPERATIONS ====================
+
+def get_user_role(id_user: int) -> int:
+    """
+    Get a user's internal role level.
+
+    Returns:
+        1 = User (default), 2 = Admin, 3 = BotMaster
+        Returns 0 if user not found.
+    """
+    conn = _get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT role FROM roles_tb WHERE id_user = %s", (id_user,))
+        resultado = cursor.fetchone()
+        return resultado[0] if resultado else 0
+    except Exception as e:
+        print(f"[ERROR DB] Error getting user role: {e}")
+        return 0
+    finally:
+        _put_connection(conn)
+
+
+def set_user_role(id_user: int, role: int) -> bool:
+    """
+    Set a user's internal role.
+
+    Args:
+        id_user: User's Telegram ID
+        role: 1=User, 2=Admin, 3=BotMaster
+    """
+    if role not in (1, 2, 3):
+        print(f"[ERROR DB] Invalid role: {role}")
+        return False
+
+    conn = _get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO roles_tb (id_user, role) VALUES (%s, %s) "
+            "ON CONFLICT (id_user) DO UPDATE SET role = %s",
+            (id_user, role, role),
+        )
+        conn.commit()
+        return True
+    except Exception as e:
+        conn.rollback()
+        print(f"[ERROR DB] Error setting user role: {e}")
+        return False
+    finally:
+        _put_connection(conn)
+
+
+def check_permission(id_user: int, min_role: int) -> bool:
+    """
+    Check if user has at least the specified role level.
+
+    Args:
+        id_user: User's Telegram ID
+        min_role: Minimum required role (2=Admin, 3=BotMaster)
+    """
+    return get_user_role(id_user) >= min_role
+
+
+# ==================== COMBAT OPERATIONS ====================
+
+def restart_all_combats():
+    """Reset all active combats to 'cancelado' on startup."""
+    conn = _get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE combates_tb SET estado = 'cancelado' WHERE estado = 'activo'")
+        affected = cursor.rowcount
+        conn.commit()
+        if affected > 0:
+            print(f"[INIT] Reset {affected} active combats")
+    except Exception as e:
+        conn.rollback()
+        print(f"[ERROR DB] Error restarting combats: {e}")
+    finally:
+        _put_connection(conn)
+
+
+# ==================== TEXT UTILITY FUNCTIONS ====================
 
 def normalizar_nombre(first_name: str, last_name: str = "") -> str:
-    """
-    Normalize and clean user names.
-    
-    Removes accents, special characters, and normalizes spaces.
-    
-    Args:
-        first_name: User's first name
-        last_name: User's last name
-    
-    Returns:
-        Normalized name string
-    """
+    """Normalize and clean user names."""
     nombre_completo = f"{to_plain_text(first_name) or ''} {to_plain_text(last_name) or ''}".strip()
-    nombre_completo = re.sub(r'[^A-Za-z0-9ÁÉÍÓÚáéíóúÑñÜü ]+', '', nombre_completo)
+    nombre_completo = re.sub(r'[^A-Za-z0-9ÃÃ‰ÃÃ“ÃšÃ¡Ã©Ã­Ã³ÃºÃ‘Ã±ÃœÃ¼ ]+', '', nombre_completo)
     nombre_completo = unicodedata.normalize("NFKD", nombre_completo)
     nombre_completo = ''.join(
         c for c in nombre_completo
@@ -764,118 +779,54 @@ def normalizar_nombre(first_name: str, last_name: str = "") -> str:
 
 
 def to_plain_text(s: str, keep_space: bool = False) -> str:
-    """
-    Convert text to plain ASCII, removing accents and special characters.
-    
-    Args:
-        s: Input string
-        keep_space: If True, preserve spaces; if False, remove all spaces
-    
-    Returns:
-        Cleaned ASCII string
-    """
+    """Convert text to plain ASCII, removing accents and special characters."""
     if not isinstance(s, str):
         return ""
-    
+
     out_chars = []
-    
     try:
         for ch in s:
-            # Normalize combined characters (NFKD separates diacritics)
             ch_nfd = unicodedata.normalize("NFKD", ch)
-            
             for ch2 in ch_nfd:
                 cat = unicodedata.category(ch2)
-                
-                # Ignore combining marks (diacritics)
                 if cat.startswith("M"):
                     continue
-                
-                # Ignore control and format characters
                 if cat in ("Cc", "Cf"):
                     continue
-                
-                # Accept ASCII alphanumeric as-is
-                if ('0' <= ch2 <= '9' or 'A' <= ch2 <= 'Z' or 'a' <= ch2 <= 'z'):
+                if '0' <= ch2 <= '9' or 'A' <= ch2 <= 'Z' or 'a' <= ch2 <= 'z':
                     out_chars.append(ch2)
                     continue
-                
-                # Try to extract base letter from Unicode name
                 try:
                     name = unicodedata.name(ch2)
                 except ValueError:
                     name = ""
-                
                 if "LATIN" in name and "LETTER" in name:
-                    match = re.search(r"LETTER\s+([A-Z]+[A-Z0-9]*)$", name)
-                    if match:
-                        token = match.group(1)
-                        for c in token:
+                    m = re.search(r"LETTER\s+([A-Z]+[A-Z0-9]*)$", name)
+                    if m:
+                        for c in m.group(1):
                             if 'A' <= c <= 'Z':
-                                out_chars.append(c.lower())
+                                out_chars.append(c)
                         continue
-                
-                # Treat separator characters as spaces
                 if cat.startswith("Z"):
                     out_chars.append(" ")
-                    continue
-        
-        # Join and normalize spaces
+
         text = "".join(out_chars)
-        
         if keep_space:
             text = re.sub(r"\s+", " ", text).strip()
             text = re.sub(r"[^0-9A-Za-z ]+", "", text)
         else:
             text = re.sub(r"[^0-9A-Za-z]+", "", text)
-        
-        return text.lower()
+        return reemplazar_acentos(text.lower())
     except TypeError:
         return ""
 
 
 def reemplazar_acentos(cadena: str) -> str:
-    """
-    Replace accented characters with their non-accented equivalents.
-    
-    Args:
-        cadena: Input string
-    
-    Returns:
-        String with accents replaced
-    """
+    """Replace accented characters with their base forms."""
     reemplazos = (
-        ("á", "a"), ("é", "e"), ("í", "i"), ("ó", "o"), ("ú", "u"),
-        ("Á", "A"), ("É", "E"), ("Í", "I"), ("Ó", "O"), ("Ú", "U")
+        ("Ã¡", "a"), ("Ã©", "e"), ("Ã­", "i"), ("Ã³", "o"), ("Ãº", "u"),
+        ("Ã", "A"), ("Ã‰", "E"), ("Ã", "I"), ("Ã“", "O"), ("Ãš", "U"),
     )
-    
     for acentuada, normalizada in reemplazos:
         cadena = cadena.replace(acentuada, normalizada)
-    
     return cadena
-
-
-# ==================== COMBAT OPERATIONS ====================
-
-def restart_all_combats() -> None:
-    """
-    Reset all active combats to 'cancelado' status.
-    Called on bot startup to clean up any incomplete combats.
-    """
-    try:
-        conn = _get_connection()
-        cursor = conn.cursor()
-        cursor.execute("PRAGMA foreign_keys = ON;")
-        
-        cursor.execute(
-            "UPDATE combates_tb SET estado = 'cancelado' WHERE estado = 'activo'"
-        )
-        
-        affected_rows = cursor.rowcount
-        if affected_rows > 0:
-            print(f"[INIT] Cancelled {affected_rows} active combats on startup")
-        
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        print(f"[ERROR DB] Error restarting combats: {e}")

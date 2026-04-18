@@ -1,7 +1,7 @@
 # starting_menu.py
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
-from sqlgestion import get_campo_usuario
+from src.database.database import get_campo_usuario
 from handlers.tienda import tienda
 from handlers.inventario import inventario
 

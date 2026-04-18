@@ -1,10 +1,10 @@
-# handlers/imagen_presentaciones.py
+# handlers/rewards.py
 import asyncio
 from datetime import datetime
 from telegram import Update
 from telegram.ext import ContextTypes
-from config import obtener_temas_por_comunidad
-from sqlgestion import normalizar_nombre,get_campo_usuario,insert_user,dar_puntos
+from src.config import obtener_temas_por_comunidad
+from src.database.database import normalizar_nombre,get_campo_usuario,insert_user,dar_puntos
 
 contador_imagenes_multimedia = {}
 contador_imagenes_nsfw = {}
