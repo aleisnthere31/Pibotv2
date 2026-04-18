@@ -2,7 +2,6 @@
 import random
 from telegram import Update
 from telegram.ext import ContextTypes
-from src.config import ADMINS
 from src.database.database import (
     get_campo_usuario, normalizar_nombre, update_perfil,
     insert_user, get_id_user, quitar_puntos, dar_puntos,
@@ -13,17 +12,8 @@ from src.database.database import (
 
 
 async def verificar_admin(user_id: int, update: Update) -> bool:
-    """Check if user is admin via internal role system (role >= 2) OR config ADMINS list."""
-    # Check internal role system first
-    if check_permission(user_id, 2):
-        return True
-    # Fallback: check config-based admin list
-    com_id = update.effective_chat.id
-    for comunidad in ADMINS:
-        if comunidad["id_comunidad"] == com_id:
-            if user_id in comunidad["admins"]:
-                return True
-    return False
+    """Check if user is admin via internal role system (role >= 2)."""
+    return check_permission(user_id, 2)
 
 
 def obtener_gif_aleatorio(nombre_producto):

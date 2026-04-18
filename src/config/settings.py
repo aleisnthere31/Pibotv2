@@ -83,37 +83,6 @@ COMUNIDADES = [
     }
 ]
 
-# Administrator lists per community
-ADMINS = [
-    {
-        "id_comunidad": -1003397946543,  # Ara
-        "admins": {
-            5661536115,
-            1128700552,
-            2032501673
-        }
-    },
-    {
-        "id_comunidad": -1003290179217,  # Kiusama
-        "admins": {
-            1128700552,
-            7745029153,
-            5708369612,
-            8418367872
-        }
-    },
-    {
-        "id_comunidad": -1002983018006,  # Rub
-        "admins": {
-            1128700552,
-            7029654837,
-            7906640874,
-            2032501673,
-            7589729679
-        }
-    }
-]
-
 # Dominant (DOM) users and their submissives
 # DOM_ID: [submissive_IDs]
 DOMS = {
@@ -142,19 +111,3 @@ def obtener_temas_por_comunidad(community_id: int) -> dict:
         if comunidad["id_comunidad"] == community_id:
             return comunidad["temas"]
     return None
-
-
-def obtener_admins_comunidad(community_id: int) -> set:
-    """
-    Get admin user IDs for a specific community.
-    
-    Args:
-        community_id: The community chat ID
-    
-    Returns:
-        Set of admin user IDs, or empty set if community not found
-    """
-    for admin_config in ADMINS:
-        if admin_config["id_comunidad"] == community_id:
-            return admin_config["admins"]
-    return set()
