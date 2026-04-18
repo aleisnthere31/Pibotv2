@@ -29,7 +29,7 @@ from src.config import BOT_TOKEN, DOMS, obtener_temas_por_comunidad, PUNISHMENT_
 from src.database.database import create_database, create_tables, restart_all_combats, seed_items, init_botmaster_roles, get_campo_usuario, insert_user, normalizar_nombre, update_perfil
 
 # Handler imports - General commands
-from handlers.general import dar, ver, regalar, numero_azar, quitar
+from handlers.general import dar, ver, regalar, numero_azar, quitar, userid
 from handlers.starting_menu import start, menu_callback
 from handlers.tienda import tienda, tienda_callback
 from handlers.inventario import inventario, inventario_callback, usar
@@ -400,6 +400,7 @@ def main() -> None:
     app.add_handler(CommandHandler("saludar", saludar), group=2)
     app.add_handler(CommandHandler("AsignarRol", asignar_rol), group=2)
     app.add_handler(CommandHandler("MiRol", ver_rol), group=2)
+    app.add_handler(CommandHandler("userid", userid), group=2)
 
     # Group 2.5: Battle/Combat system (refactored)
     app.add_handler(CommandHandler("lucha", lucha), group=2)

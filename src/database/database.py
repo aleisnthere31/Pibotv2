@@ -48,7 +48,7 @@ def _put_connection(conn):
 # ==================== INITIALIZATION ====================
 
 def create_database():
-    """No-op for PostgreSQL â€” the database is provisioned by Railway."""
+    """No-op for PostgreSQL — the database is provisioned by Railway."""
     pass
 
 
@@ -152,7 +152,7 @@ def create_tables():
 def seed_items():
     """
     Seed the item catalog with default items if not already present.
-    Idempotent â€” skips items that already exist.
+    Idempotent — skips items that already exist.
     """
     items = [
         {
@@ -160,42 +160,42 @@ def seed_items():
             "precio": 100,
             "imagen": "img_items/collar.png",
             "descripcion": "Un bonito collar para poner a alguien especial",
-            "mensaje": "ðŸ˜ˆ {sender_username} le ha puesto un collar muy bonito a {receptor_username} ðŸ˜\n Â¡QuÃ© envidiaaa!",
+            "mensaje": "😈 {sender_username} le ha puesto un collar muy bonito a {receptor_username} 😍\n ¡Qué envidiaaa!",
         },
         {
             "nombre": "Latigo",
             "precio": 150,
             "imagen": "img_items/latigo.png",
-            "descripcion": "Un lÃ¡tigo para los que se portan mal",
-            "mensaje": "ðŸ˜± {sender_username} ha azotado con un lÃ¡tigo a {receptor_username} \n ... Eso va a dejar marca ðŸ«¦",
+            "descripcion": "Un látigo para los que se portan mal",
+            "mensaje": "😱 {sender_username} ha azotado con un látigo a {receptor_username} \n ... Eso va a dejar marca 🫦",
         },
         {
             "nombre": "Fusta",
             "precio": 120,
             "imagen": "img_items/fusta.png",
             "descripcion": "Fusta de adiestramiento profesional",
-            "mensaje": "ðŸ¤© {sender_username} estÃ¡ adiestrando a {receptor_username} con su fusta favorita ðŸ˜ˆ\n Â¿PorquÃ© parece que {receptor_username} lo disfruta?... ðŸ«¦",
+            "mensaje": "🤩 {sender_username} está adiestrando a {receptor_username} con su fusta favorita 😈\n ¿Porqué parece que {receptor_username} lo disfruta?... 🫦",
         },
         {
             "nombre": "Galleta",
             "precio": 50,
             "imagen": "img_items/galleta.png",
             "descripcion": "Una galleta para premiar el buen comportamiento",
-            "mensaje": "â¤ {sender_username} le ha regalado a {receptor_username} una galleta ðŸª\n Parece que se ha portado muy bien ðŸ¤¤",
+            "mensaje": "❤ {sender_username} le ha regalado a {receptor_username} una galleta 🍪\n Parece que se ha portado muy bien 🤤",
         },
         {
             "nombre": "Bola mordaza",
             "precio": 200,
             "imagen": "img_items/bola_mordaza.png",
             "descripcion": "Para cuando alguien habla demasiado",
-            "mensaje": "ðŸ¤ {sender_username} Le ha puesto una bola mordaza a {receptor_username}\n Que bien te ves sin poder hablar ðŸ˜–",
+            "mensaje": "🤏 {sender_username} Le ha puesto una bola mordaza a {receptor_username}\n Que bien te ves sin poder hablar 😖",
         },
         {
             "nombre": "Sorpresa",
             "precio": 300,
             "imagen": "img_items/sorpresa.jpg",
-            "descripcion": "Un artÃ­culo misterioso... Â¿te atreves?",
-            "mensaje": "ðŸ˜ˆ {sender_username} ha decidido modelarle algo de su lencerÃ­a sexy a {receptor_username}\n Le queda muy bien, aunque no esperaba que {sender_username} hiciera eso frente a todos ðŸ‘ðŸ‘„ðŸ‘",
+            "descripcion": "Un artículo misterioso... ¿te atreves?",
+            "mensaje": "😈 {sender_username} ha decidido modelarle algo de su lencería sexy a {receptor_username}\n Le queda muy bien, aunque no esperaba que {sender_username} hiciera eso frente a todos 👁👄👁",
         },
     ]
 
@@ -768,7 +768,7 @@ def restart_all_combats():
 def normalizar_nombre(first_name: str, last_name: str = "") -> str:
     """Normalize and clean user names."""
     nombre_completo = f"{to_plain_text(first_name) or ''} {to_plain_text(last_name) or ''}".strip()
-    nombre_completo = re.sub(r'[^A-Za-z0-9ÃÃ‰ÃÃ“ÃšÃ¡Ã©Ã­Ã³ÃºÃ‘Ã±ÃœÃ¼ ]+', '', nombre_completo)
+    nombre_completo = re.sub(r'[^A-Za-z0-9\u00C1\u00C9\u00CD\u00D3\u00DA\u00E1\u00E9\u00ED\u00F3\u00FA\u00D1\u00F1\u00DC\u00FC ]+', '', nombre_completo)
     nombre_completo = unicodedata.normalize("NFKD", nombre_completo)
     nombre_completo = ''.join(
         c for c in nombre_completo
@@ -824,8 +824,8 @@ def to_plain_text(s: str, keep_space: bool = False) -> str:
 def reemplazar_acentos(cadena: str) -> str:
     """Replace accented characters with their base forms."""
     reemplazos = (
-        ("Ã¡", "a"), ("Ã©", "e"), ("Ã­", "i"), ("Ã³", "o"), ("Ãº", "u"),
-        ("Ã", "A"), ("Ã‰", "E"), ("Ã", "I"), ("Ã“", "O"), ("Ãš", "U"),
+        ("\u00e1", "a"), ("\u00e9", "e"), ("\u00ed", "i"), ("\u00f3", "o"), ("\u00fa", "u"),
+        ("\u00c1", "A"), ("\u00c9", "E"), ("\u00cd", "I"), ("\u00d3", "O"), ("\u00da", "U"),
     )
     for acentuada, normalizada in reemplazos:
         cadena = cadena.replace(acentuada, normalizada)
