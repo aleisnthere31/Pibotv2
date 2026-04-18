@@ -6,8 +6,12 @@ Internal role system:
   2 = Admin
   3 = BotMaster
 
+Hierarchical permissions for /AsignarRol:
+  Admin (2)     → can assign roles 1-2, cannot modify BotMasters
+  BotMaster (3) → can assign any role (1, 2, 3) to anyone
+
 Commands:
-  /AsignarRol @usuario [1|2|3]  — Only BotMaster can use this
+  /AsignarRol @usuario [1|2|3]  — Admin+ can use this (with restrictions)
 """
 
 from telegram import Update
@@ -20,24 +24,24 @@ ROLE_NAMES = {1: "Usuario", 2: "Admin", 3: "BotMaster"}
 async def asignar_rol(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Command: /AsignarRol @usuario [1|2|3]
-    Only BotMaster (role=3) can assign roles.
+    Admin (2): can assign roles 1-2, cannot touch BotMasters.
+    BotMaster (3): unrestricted.
     """
     sender = update.effective_user
+    sender_role = get_user_role(sender.id)
 
-    # Permission check: BotMaster only
-    if not check_permission(sender.id, 3):
-        await update.message.reply_text(
-            "❌ Solo el BotMaster puede asignar roles."
-        )
+    # Permission check: Admin (2) or higher
+    if sender_role < 2:
+        await update.message.reply_text("❌ No tienes permisos para asignar roles.")
         return
 
     if not context.args or len(context.args) < 2:
+        if sender_role >= 3:
+            roles_text = "  1 = Usuario\n  2 = Admin\n  3 = BotMaster"
+        else:
+            roles_text = "  1 = Usuario\n  2 = Admin"
         await update.message.reply_text(
-            "📋 Uso: /AsignarRol @usuario [1|2|3]\n\n"
-            "Roles:\n"
-            "  1 = Usuario\n"
-            "  2 = Admin\n"
-            "  3 = BotMaster"
+            f"📋 Uso: /AsignarRol @usuario [rol]\n\nRoles:\n{roles_text}"
         )
         return
 
@@ -63,6 +67,16 @@ async def asignar_rol(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except ValueError:
         await update.message.reply_text("⚠️ El rol debe ser 1, 2 o 3.")
         return
+
+    # Hierarchical restrictions for Admins
+    if sender_role == 2:
+        target_role = get_user_role(target_id)
+        if target_role >= 3:
+            await update.message.reply_text("❌ No puedes modificar el rol de un BotMaster.")
+            return
+        if role >= 3:
+            await update.message.reply_text("❌ Solo un BotMaster puede asignar el rol de BotMaster.")
+            return
 
     # Set role
     if set_user_role(target_id, role):
