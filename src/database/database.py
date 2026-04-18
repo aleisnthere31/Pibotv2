@@ -224,6 +224,12 @@ def seed_items():
                     (item["nombre"], item["precio"], item["imagen"], item["descripcion"], item["mensaje"]),
                 )
                 print(f"[SEED] Item '{item['nombre']}' inserted.")
+            else:
+                # Update existing items to fix any corrupted text
+                cursor.execute(
+                    "UPDATE items_tb SET descripcion = %s, mensaje = %s WHERE nombre = %s",
+                    (item["descripcion"], item["mensaje"], item["nombre"]),
+                )
         conn.commit()
     except Exception as e:
         conn.rollback()
