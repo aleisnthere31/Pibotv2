@@ -71,8 +71,22 @@ def create_tables():
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS usuarios_tb (
                 id_user BIGINT PRIMARY KEY,
-                saldo INTEGER DEFAULT 0
+                saldo INTEGER DEFAULT 0,
+                suerte INTEGER NOT NULL DEFAULT 2 CHECK (suerte IN (1, 2, 3))
             );
+        """)
+
+        # Add suerte column if missing (existing tables)
+        cursor.execute("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'usuarios_tb' AND column_name = 'suerte'
+                ) THEN
+                    ALTER TABLE usuarios_tb ADD COLUMN suerte INTEGER NOT NULL DEFAULT 2 CHECK (suerte IN (1, 2, 3));
+                END IF;
+            END $$;
         """)
 
         cursor.execute("""
@@ -390,6 +404,50 @@ def quitar_puntos(id_user: int, cantidad: int) -> bool:
     saldo_actual = get_campo_usuario(id_user, "saldo") or 0
     nuevo_saldo = max(0, saldo_actual - cantidad)
     return update_saldo(id_user, nuevo_saldo)
+
+
+# ==================== LUCK (SUERTE) OPERATIONS ====================
+
+def get_suerte(id_user: int) -> int:
+    """Get a user's luck value (1, 2, or 3). Returns 2 (default) if not found."""
+    conn = _get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT suerte FROM usuarios_tb WHERE id_user = %s", (id_user,))
+        resultado = cursor.fetchone()
+        return resultado[0] if resultado else 2
+    except Exception as e:
+        print(f"[ERROR DB] Error getting suerte: {e}")
+        return 2
+    finally:
+        _put_connection(conn)
+
+
+def set_suerte(id_user: int, valor: int) -> bool:
+    """Set a user's luck value (1, 2, or 3)."""
+    if valor not in (1, 2, 3):
+        print(f"[ERROR DB] Invalid suerte value: {valor}")
+        return False
+
+    conn = _get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE usuarios_tb SET suerte = %s WHERE id_user = %s",
+            (valor, id_user),
+        )
+        if cursor.rowcount == 0:
+            print("[ERROR DB] User not found")
+            conn.rollback()
+            return False
+        conn.commit()
+        return True
+    except Exception as e:
+        conn.rollback()
+        print(f"[ERROR DB] Error setting suerte: {e}")
+        return False
+    finally:
+        _put_connection(conn)
 
 
 # ==================== ITEM OPERATIONS ====================

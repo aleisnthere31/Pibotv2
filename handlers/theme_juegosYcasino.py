@@ -3,7 +3,7 @@ from datetime import datetime
 from telegram import Update
 from telegram.ext import ContextTypes
 from handlers.general import get_receptor
-from src.database.database import normalizar_nombre,get_campo_usuario,insert_user,dar_puntos,quitar_puntos,update_perfil
+from src.database.database import normalizar_nombre,get_campo_usuario,insert_user,dar_puntos,quitar_puntos,update_perfil,get_suerte
 from src.config import obtener_temas_por_comunidad
 
 # === BASE DE DATOS EN MEMORIA ===
@@ -482,7 +482,15 @@ async def robar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     robar_usuarios[robber_id]["veces"] = robar_usuarios[robber_id]["veces"] + 1 
 
-    exito = random.choice([True, False, False])
+    # Luck-based probability: suerte 3 → 2/3, suerte 2 → 1/3, suerte 1 → 0/3
+    nivel_suerte = get_suerte(robber_id)
+    if nivel_suerte == 3:
+        opciones = [True, True, False]
+    elif nivel_suerte == 1:
+        opciones = [False, False, False]
+    else:
+        opciones = [True, False, False]
+    exito = random.choice(opciones)
 
     if exito:
         cantidad_robada = random.randint(1,100)

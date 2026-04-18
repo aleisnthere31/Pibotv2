@@ -54,6 +54,7 @@ Bot de Telegram para gestión de comunidades BDSM con economía virtual, gamific
 | `/castigar @user` | Confinar al rincón | DOM |
 | `/perdonar @user` | Liberar del rincón | DOM |
 | `/AsignarRol @user [1\|2\|3]` | Cambiar rol de usuario | BotMaster |
+| `/Suerte @user [1\|2\|3]` | Cambiar suerte de usuario (prob. robo) | BotMaster |
 | `/MiRol` | Ver tu rol actual | Todos |
 
 ## Instalación Local

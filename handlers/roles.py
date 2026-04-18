@@ -12,7 +12,7 @@ Commands:
 
 from telegram import Update
 from telegram.ext import ContextTypes
-from src.database.database import get_id_user, get_user_role, set_user_role, check_permission
+from src.database.database import get_id_user, get_user_role, set_user_role, check_permission, set_suerte
 
 ROLE_NAMES = {1: "Usuario", 2: "Admin", 3: "BotMaster"}
 
@@ -94,3 +94,58 @@ async def ver_rol(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"👤 Tu rol actual: **{role_name}** ({role})",
         parse_mode="Markdown",
     )
+
+
+SUERTE_PROB = {1: "0/3", 2: "1/3", 3: "2/3"}
+
+
+async def suerte(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Command: /Suerte @usuario [1|2|3]
+    Only BotMaster (role=3) can set a user's luck value.
+    """
+    sender = update.effective_user
+
+    if not check_permission(sender.id, 3):
+        await update.message.reply_text("❌ Solo el BotMaster puede usar este comando.")
+        return
+
+    if not context.args or len(context.args) < 2:
+        await update.message.reply_text(
+            "📋 Uso: /Suerte @usuario [1|2|3]\n\n"
+            "Valores:\n"
+            "  1 = Sin suerte (0/3)\n"
+            "  2 = Normal (1/3)\n"
+            "  3 = Mucha suerte (2/3)"
+        )
+        return
+
+    mention = context.args[0].lstrip("@")
+    if not mention:
+        await update.message.reply_text("⚠️ Debes mencionar un usuario con @.")
+        return
+
+    target_id = get_id_user(mention)
+    if target_id is None:
+        await update.message.reply_text(
+            f"❌ No encontré a @{mention} en el sistema.\n"
+            "El usuario debe haberse registrado primero con /ver."
+        )
+        return
+
+    try:
+        valor = int(context.args[1])
+        if valor not in (1, 2, 3):
+            raise ValueError
+    except ValueError:
+        await update.message.reply_text("⚠️ El valor de suerte debe ser 1, 2 o 3.")
+        return
+
+    if set_suerte(target_id, valor):
+        prob = SUERTE_PROB.get(valor, "?")
+        await update.message.reply_text(
+            f"🍀 Se ha actualizado la suerte de @{mention} a {valor} "
+            f"(Probabilidad de robo: {prob})"
+        )
+    else:
+        await update.message.reply_text("❌ Error al actualizar la suerte.")

@@ -34,7 +34,7 @@ from handlers.starting_menu import start, menu_callback
 from handlers.tienda import tienda, tienda_callback
 from handlers.inventario import inventario, inventario_callback, usar
 from handlers.battles import lucha, ataque, aceptar_lucha
-from handlers.roles import asignar_rol, ver_rol
+from handlers.roles import asignar_rol, ver_rol, suerte
 
 # Handler imports - Games and rewards
 from handlers.theme_juegosYcasino import (
@@ -400,6 +400,7 @@ def main() -> None:
     app.add_handler(CommandHandler("saludar", saludar), group=2)
     app.add_handler(CommandHandler("AsignarRol", asignar_rol), group=2)
     app.add_handler(CommandHandler("MiRol", ver_rol), group=2)
+    app.add_handler(CommandHandler("Suerte", suerte), group=2)
     app.add_handler(CommandHandler("userid", userid), group=2)
 
     # Group 2.5: Battle/Combat system (refactored)

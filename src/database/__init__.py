@@ -30,6 +30,8 @@ from .database import (
     normalizar_nombre,
     to_plain_text,
     reemplazar_acentos,
+    get_suerte,
+    set_suerte,
 )
 
 __all__ = [
@@ -62,4 +64,6 @@ __all__ = [
     "normalizar_nombre",
     "to_plain_text",
     "reemplazar_acentos",
+    "get_suerte",
+    "set_suerte",
 ]
