@@ -63,7 +63,9 @@ async def auto_registrar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     try:
         existing = get_campo_usuario(user.id, "id_user")
         if existing is None:
-            nombre = normalizar_nombre(user.first_name, user.last_name or "")
+            nombre = normalizar_nombre(user.first_name or "", user.last_name or "")
+            if not nombre.strip():
+                nombre = user.username or f"user{user.id}"
             insert_user(user.id, 0, user.username, nombre)
         elif user.username and get_campo_usuario(user.id, "username") != user.username:
             update_perfil(user.id, username=user.username)

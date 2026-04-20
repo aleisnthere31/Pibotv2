@@ -37,6 +37,8 @@ def obtener_gif_aleatorio(nombre_producto):
 
 
 async def get_receptor(update: Update, context: ContextTypes.DEFAULT_TYPE, args_length=-1):
+    if not update.message:
+        return None
     if len(context.args) == 0 and not update.message.reply_to_message:
         return None
 
@@ -57,7 +59,10 @@ async def get_receptor(update: Update, context: ContextTypes.DEFAULT_TYPE, args_
         try:
             receptor = update.message.reply_to_message.from_user
             if get_campo_usuario(receptor.id, "id_user") is None:
-                insert_user(receptor.id, 0, receptor.username, normalizar_nombre(receptor.first_name, receptor.last_name))
+                nombre = normalizar_nombre(receptor.first_name or "", receptor.last_name or "")
+                if not nombre.strip():
+                    nombre = receptor.username or f"user{receptor.id}"
+                insert_user(receptor.id, 0, receptor.username, nombre)
         except Exception:
             receptor = None
     else:
